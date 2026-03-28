@@ -17,11 +17,15 @@ class AddAuxiliaryLoss(BasicTSCallback):
             losses: Iterable[str], keys of losses in `forward_return` that will be added. Default is ["aux_loss"].
         """
         super().__init__()
-        self.losses = losses or ["aux_loss"]
+        self.losses = tuple(losses or ["aux_loss"])
+
+    def on_train_start(self, runner: "BasicTSRunner", *args, **kwargs) -> None:
+        merged = list(getattr(runner, "_auxiliary_loss_keys", []) or [])
+        for name in self.losses:
+            if name not in merged:
+                merged.append(name)
+        runner._auxiliary_loss_keys = merged
 
     def on_compute_loss(self, runner: "BasicTSRunner", **kwargs):
-        forward_return = kwargs["forward_return"]
-        regression_loss = runner._metric_forward(runner.loss, forward_return)
-        for loss_name in self.losses:
-            if loss_name in forward_return:
-                regression_loss += forward_return[loss_name]
+        """Reserved; auxiliary terms are summed in ``BasicTSRunner`` after the base metric."""
+        pass

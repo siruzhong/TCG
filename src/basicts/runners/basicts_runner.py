@@ -242,6 +242,7 @@ class BasicTSRunner:
         self.register_meter("train/loss", "train", "{:.4f}")
         for key in self.metrics:
             self.register_meter(f"train/{key}", "train", "{:.4f}")
+        self._auxiliary_loss_keys: list = []
 
     @master_only
     def _init_validation(self):
@@ -450,6 +451,9 @@ class BasicTSRunner:
                     forward_return = self._forward(self.model, data, self.global_steps, self.epoch)
                     self.callback_handler.trigger("on_compute_loss", self, epoch=self.epoch, step=self.global_steps, data=data, forward_return=forward_return)
                     loss = self._metric_forward(self.loss, forward_return)
+                    for _k in getattr(self, "_auxiliary_loss_keys", []) or []:
+                        if _k in forward_return:
+                            loss = loss + forward_return[_k]
                 loss_weight = self.taskflow.get_weight(forward_return) # task specific metric weight for averaging
                 self.update_meter("train/loss", loss.item(), loss_weight)
                 if self.should_backward:
@@ -505,6 +509,9 @@ class BasicTSRunner:
             self.callback_handler.trigger("on_compute_loss", self, forward_return=forward_return)
             # compute validation loss
             loss = self._metric_forward(self.loss, forward_return)
+            for _k in getattr(self, "_auxiliary_loss_keys", []) or []:
+                if _k in forward_return:
+                    loss = loss + forward_return[_k]
             loss_weight = self.taskflow.get_weight(forward_return) # task specific metric weight for averaging
             self.update_meter(f"{meter_type}/loss", loss.item(), loss_weight)
             forward_return = self.taskflow.postprocess(self, forward_return)

@@ -5,6 +5,7 @@ from basicts.modules.decomposition import (DFTDecomposition, MovingAverage,
 from basicts.modules.dropout_ts import (DropoutTS, DropoutTSContext,
                                          NoiseScorer, SampleAdaptiveDropout)
 from basicts.modules.mlps import MLPLayer, ResMLPLayer
+from basicts.modules.tcg import TemporalContextualGating, tcg_orthogonal_loss
 
 __ALL__ = [
     "ACT2FN",
@@ -17,5 +18,7 @@ __ALL__ = [
     "DropoutTS",
     "DropoutTSContext",
     "NoiseScorer",
-    "SampleAdaptiveDropout"
+    "SampleAdaptiveDropout",
+    "TemporalContextualGating",
+    "tcg_orthogonal_loss",
 ]
