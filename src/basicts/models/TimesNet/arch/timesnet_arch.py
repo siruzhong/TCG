@@ -1,6 +1,9 @@
+from typing import Dict
+
 import torch
 from basicts.modules.embed import FeatureEmbedding
 from basicts.modules.norm import RevIN
+from basicts.modules.tcg import tcg_orthogonal_loss
 from torch import nn
 
 from ..config.timesnet_config import TimesNetConfig
@@ -66,6 +69,8 @@ class TimesNetForForecasting(nn.Module):
         self.backbone = TimesNetBackbone(config)
         self.projection = nn.Linear(config.hidden_size, config.num_features)
         self.revin = RevIN(affine=False)
+        self.tcg_cfg = config.tcg
+        self.tcg = config.tcg.build_module(config.hidden_size)
 
     def forward(self, inputs: torch.Tensor, inputs_timestamps: torch.Tensor) -> torch.Tensor:
         """
@@ -81,6 +86,15 @@ class TimesNetForForecasting(nn.Module):
 
         inputs = self.revin(inputs, "norm")
         hidden_states = self.backbone(inputs, inputs_timestamps)
+        tcg_extra: Dict[str, torch.Tensor] = {}
+        if self.tcg is not None:
+            hidden_states = self.tcg(hidden_states)
+            if self.tcg_cfg.orth_lambda > 0:
+                tcg_extra["tcg_orth"] = self.tcg_cfg.orth_lambda * tcg_orthogonal_loss(
+                    self.tcg.mode_table
+                )
         prediction = self.projection(hidden_states)
         prediction = self.revin(prediction[:, -self.output_len:, :], "denorm")
+        if tcg_extra:
+            return {"prediction": prediction, **tcg_extra}
         return prediction

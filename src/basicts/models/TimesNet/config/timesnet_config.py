@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Sequence
 
-from basicts.configs import BasicTSModelConfig
+from basicts.configs import BasicTSModelConfig, TCGConfig
 
 
 @dataclass
@@ -23,3 +23,9 @@ class TimesNetConfig(BasicTSModelConfig):
     top_k: int = field(default=5, metadata={"help": "Top-k of amplitude in FFT."})
     use_timestamps: bool = field(default=False, metadata={"help": "Whether to use timestamps as tokens."})
     timestamp_sizes: Sequence[int] = field(default=None, metadata={"help": "Sizes of timestamps."})
+    tcg: TCGConfig = field(
+        default_factory=TCGConfig,
+        metadata={
+            "help": "Temporal-Contextual Gating (after backbone, before projection).",
+        },
+    )

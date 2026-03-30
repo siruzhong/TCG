@@ -1,9 +1,10 @@
-from typing import Optional
+from typing import Dict, Optional
 
 import torch
 from basicts.modules.decomposition import MovingAverageDecomposition
 from basicts.modules.embed import FeatureEmbedding
 from basicts.modules.norm import RevIN
+from basicts.modules.tcg import tcg_orthogonal_loss
 from torch import nn
 
 from ..config.timemixer_config import TimeMixerConfig
@@ -173,6 +174,8 @@ class TimeMixerForForecasting(nn.Module):
                     for i in range(self.down_sampling_layers + 1)
                 ]
             )
+        self.tcg_cfg = config.tcg
+        self.tcg = config.tcg.build_module(config.hidden_size)
 
     def forward(self,
                 inputs: torch.Tensor,
@@ -184,6 +187,8 @@ class TimeMixerForForecasting(nn.Module):
         for i, hidden_states in enumerate(hidden_states_list):
             hidden_states = self.predict_layers[i](
                 hidden_states.permute(0, 2, 1)).permute(0, 2, 1)
+            if self.tcg is not None:
+                hidden_states = self.tcg(hidden_states)
             hidden_states = self.projection(hidden_states)
             if res_list is None: # channel indepenent
                 hidden_states = hidden_states.reshape(
@@ -195,4 +200,11 @@ class TimeMixerForForecasting(nn.Module):
             prediction_list.append(hidden_states)
         prediction = torch.stack(prediction_list, dim=-1).sum(dim=-1)
         prediction = self.backbone.norm_layers[0](prediction, "denorm")
+        tcg_extra: Dict[str, torch.Tensor] = {}
+        if self.tcg is not None and self.tcg_cfg.orth_lambda > 0:
+            tcg_extra["tcg_orth"] = self.tcg_cfg.orth_lambda * tcg_orthogonal_loss(
+                self.tcg.mode_table
+            )
+        if tcg_extra:
+            return {"prediction": prediction, **tcg_extra}
         return prediction

@@ -1,7 +1,9 @@
 from math import ceil
+from typing import Dict, List, Union
 
 import torch
 from basicts.modules.embed import PatchEmbedding
+from basicts.modules.tcg import tcg_orthogonal_loss
 from einops import rearrange
 from torch import nn
 
@@ -85,8 +87,10 @@ class Crossformer(nn.Module):
                 config.hidden_size, config.patch_len
                 ) for _ in range(config.num_layers + 1)]
         )
+        self.tcg_cfg = config.tcg
+        self.tcg = config.tcg.build_module(config.hidden_size)
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
 
         """
         Forward pass of the Crossformer model.
@@ -111,6 +115,16 @@ class Crossformer(nn.Module):
 
         # Each decoder layer makes a prediction at a scale
         dec_hidden_states_list = self.decoder(dec_in, enc_hidden_states_list)
+        tcg_extra: Dict[str, torch.Tensor] = {}
+        if self.tcg is not None:
+            # dec_hidden_states: [batch_size * num_features, out_num_patches, hidden_size]
+            dec_list: List[torch.Tensor] = list(dec_hidden_states_list)
+            dec_list[-1] = self.tcg(dec_list[-1])
+            dec_hidden_states_list = dec_list
+            if self.tcg_cfg.orth_lambda > 0:
+                tcg_extra["tcg_orth"] = self.tcg_cfg.orth_lambda * tcg_orthogonal_loss(
+                    self.tcg.mode_table
+                )
         prediction = base
         for idx, dec_hidden_states in enumerate(dec_hidden_states_list):
             # [batch_size * num_features, out_num_patches, patch_len]
@@ -121,4 +135,6 @@ class Crossformer(nn.Module):
             # cut off padding: [batch_size, output_len, num_features]
             prediction = prediction + pred_at_scale[:, :self.output_len, :]
 
+        if tcg_extra:
+            return {"prediction": prediction, **tcg_extra}
         return prediction

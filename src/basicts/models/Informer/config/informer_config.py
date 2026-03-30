@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Sequence
 
-from basicts.configs import BasicTSModelConfig
+from basicts.configs import BasicTSModelConfig, TCGConfig
 
 
 @dataclass
@@ -29,3 +29,7 @@ class InformerConfig(BasicTSModelConfig):
     output_attentions: bool = field(default=False, metadata={"help": "Whether to output attention weights."})
     use_timestamps: bool = field(default=False, metadata={"help": "Whether to use timestamps as tokens."})
     timestamp_sizes: Sequence[int] = field(default=None, metadata={"help": "Sizes of timestamps."})
+    tcg: TCGConfig = field(
+        default_factory=TCGConfig,
+        metadata={"help": "Temporal-Contextual Gating (applied after decoder, before projection)."},
+    )

@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Literal
 
-from basicts.configs import BasicTSModelConfig
+from basicts.configs import BasicTSModelConfig, TCGConfig
 
 
 @dataclass
@@ -35,3 +35,4 @@ class PatchTSTConfig(BasicTSModelConfig):
     decomp: bool = field(default=False, metadata={"help": "Whether to use decomposition."})
     moving_avg: int = field(default=25, metadata={"help": "Moving average window size for decomposition."})
     output_attentions: bool = field(default=False, metadata={"help": "Whether to output attention weights."})
+    tcg: TCGConfig = field(default_factory=TCGConfig, metadata={"help": "Temporal-Contextual Gating options."})
