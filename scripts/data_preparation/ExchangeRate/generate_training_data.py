@@ -26,7 +26,8 @@ frequency = 1440 // steps_per_day
 domain = 'exchange rate'
 timestamps_desc = ['time of day', 'day of week', 'day of month', 'day of year']
 regular_settings = {
-    'train_val_test_ratio': [0.7, 0.1, 0.2],
+    # Match DropoutTS / common LTSF split for ExchangeRate (see datasets/ExchangeRate/meta.json).
+    'train_val_test_ratio': [0.6, 0.2, 0.2],
     # 'train_val_test_ratio': [0.0, 0.0, 1], 
     'norm_each_channel': True,
     'rescale': False,

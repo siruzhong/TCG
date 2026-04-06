@@ -48,7 +48,17 @@ DATASET_CONFIGS = {
     "default": {"input_lens": [96], "output_lens": [96, 192, 336, 720]}
 }
 
+TCG_ORTH_LAMBDA_SEARCH = [0.0, 1e-4, 1e-3, 1e-2, 1e-1]
+TCG_NUM_PATTERNS_SEARCH = [4, 8, 16]
 USE_CLEAN_TARGETS = True
+
+
+def _format_orth_lambda(x: float) -> str:
+    """Compact string for logs (avoids long floats)."""
+    if x == 0.0:
+        return "0"
+    exp = f"{x:.0e}"
+    return exp if "e" in exp.lower() else f"{x:g}"
 
 
 def get_timestamp_sizes(dataset_name: str):
@@ -147,18 +157,37 @@ def run_experiment(model_name, dataset_name, num_features, input_len, output_len
     BasicTSLauncher.launch_training(cfg)
 
 
-def worker_task(gpu_queue, model_name, dataset_name, num_features, input_len, output_len):
+def worker_task(
+    gpu_queue,
+    model_name,
+    dataset_name,
+    num_features,
+    input_len,
+    output_len,
+    tcg_num_patterns: int,
+    tcg_orth_lambda: float,
+):
     """Worker process: Acquires GPU -> Runs Exp -> Releases GPU."""
     gpu_id = None
-    task_id = f"{dataset_name} ({input_len}->{output_len})"
+    task_id = (
+        f"{model_name} | {dataset_name} | {input_len}->{output_len} | "
+        f"K={tcg_num_patterns} orth={_format_orth_lambda(tcg_orth_lambda)}"
+    )
 
     try:
         gpu_id = gpu_queue.get()
         print(f"[Start] {task_id} on GPU {gpu_id}")
 
         run_experiment(
-            model_name, dataset_name, num_features, input_len, output_len, str(gpu_id),
+            model_name,
+            dataset_name,
+            num_features,
+            input_len,
+            output_len,
+            str(gpu_id),
             enable_tcg=True,
+            tcg_num_patterns=tcg_num_patterns,
+            tcg_orth_lambda=tcg_orth_lambda,
         )
 
     except Exception as e:
@@ -178,21 +207,37 @@ if __name__ == "__main__":
 
     processes = []
     print(f"Scheduling tasks on GPUs: {AVAILABLE_GPUS}")
+    print(
+        f"TCG grid: orth_lambda in {TCG_ORTH_LAMBDA_SEARCH}, "
+        f"num_patterns in {TCG_NUM_PATTERNS_SEARCH} "
+        f"({len(TCG_ORTH_LAMBDA_SEARCH) * len(TCG_NUM_PATTERNS_SEARCH)} combos per run config)"
+    )
 
-    # Schedule processes (One process per input/output length combination)
+    # One process per (model, dataset, lengths, tcg_hparams); GPUs multiplexed via queue.
     for model_name in MODELS:
         for dataset_name, num_features in DATASETS:
             config = DATASET_CONFIGS.get(dataset_name, DATASET_CONFIGS["default"])
 
             for input_len in config["input_lens"]:
                 for output_len in config["output_lens"]:
-                    p = Process(
-                        target=worker_task,
-                        args=(gpu_queue, model_name, dataset_name, num_features, input_len, output_len)
-                    )
-                    p.start()
-                    processes.append(p)
-                    time.sleep(0.1)
+                    for tcg_num_patterns in TCG_NUM_PATTERNS_SEARCH:
+                        for tcg_orth_lambda in TCG_ORTH_LAMBDA_SEARCH:
+                            p = Process(
+                                target=worker_task,
+                                args=(
+                                    gpu_queue,
+                                    model_name,
+                                    dataset_name,
+                                    num_features,
+                                    input_len,
+                                    output_len,
+                                    tcg_num_patterns,
+                                    tcg_orth_lambda,
+                                ),
+                            )
+                            p.start()
+                            processes.append(p)
+                            time.sleep(0.1)
 
     print(f"Scheduled {len(processes)} tasks.")
 
