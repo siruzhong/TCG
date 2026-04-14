@@ -63,6 +63,10 @@ def _format_orth_lambda(x: float) -> str:
 
 def get_timestamp_sizes(dataset_name: str):
     """Helper to get timestamp features."""
+    if dataset_name == "ExchangeRate":
+        return [1, 7, 31, 366]
+    if dataset_name == "Traffic":
+        return [24, 7, 31, 366]
     if dataset_name in ["ETTh1", "ETTh2"]: return [24, 7, 31, 366]
     if dataset_name in ["ETTm1", "ETTm2", "SyntheticTS"]: return [96, 7, 31, 366]
     if dataset_name.startswith("SyntheticTS"): return [96, 7, 31, 366]

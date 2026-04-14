@@ -40,19 +40,32 @@ class TemporalContextualGating(nn.Module):
         self,
         d_model: int,
         num_patterns: int = 8,
+        use_multiscale: bool = True,
+        identity_init: bool = True,
+        discrete_topk: int = 1,
     ) -> None:
         super().__init__()
         self.d_model = d_model
         self.num_patterns = num_patterns
+        self.use_multiscale = use_multiscale
+        self.discrete_topk = discrete_topk
         self.d_context = max(16, d_model // 4)
-        k1, k2 = 3, 7
-        self.conv_k1 = nn.Conv1d(
-            d_model, d_model, k1, padding="same", groups=d_model, bias=True
-        )
-        self.conv_k2 = nn.Conv1d(
-            d_model, d_model, k2, padding="same", groups=d_model, bias=True
-        )
-        ctx_in = 2 * d_model
+
+        if use_multiscale:
+            k1, k2 = 3, 7
+            self.conv_k1 = nn.Conv1d(
+                d_model, d_model, k1, padding="same", groups=d_model, bias=True
+            )
+            self.conv_k2 = nn.Conv1d(
+                d_model, d_model, k2, padding="same", groups=d_model, bias=True
+            )
+            ctx_in = 2 * d_model
+        else:
+            self.conv_k1 = nn.Conv1d(
+                d_model, d_model, 1, padding="same", groups=d_model, bias=True
+            )
+            self.conv_k2 = None
+            ctx_in = d_model
 
         self.context_mlp = nn.Sequential(
             nn.Linear(ctx_in, self.d_context),
@@ -60,13 +73,17 @@ class TemporalContextualGating(nn.Module):
         )
         self.route_proj = nn.Linear(self.d_context, num_patterns)
         self.mode_table = nn.Parameter(torch.empty(num_patterns, d_model))
-        self.gamma = nn.Parameter(torch.zeros(1))
+        if identity_init:
+            self.gamma = nn.Parameter(torch.zeros(1))
+        else:
+            self.gamma = nn.Parameter(torch.randn(1) * 0.01)
 
         nn.init.normal_(self.mode_table, std=0.02)
-        for m in (self.conv_k1, self.conv_k2):
-            nn.init.kaiming_normal_(m.weight, nonlinearity="linear")
-            if m.bias is not None:
-                nn.init.zeros_(m.bias)
+        for conv in (self.conv_k1, self.conv_k2):
+            if conv is not None:
+                nn.init.kaiming_normal_(conv.weight, nonlinearity="linear")
+                if conv.bias is not None:
+                    nn.init.zeros_(conv.bias)
         nn.init.normal_(self.route_proj.weight, std=0.02)
         nn.init.zeros_(self.route_proj.bias)
         nn.init.normal_(self.context_mlp[0].weight, std=0.02)
@@ -90,13 +107,22 @@ class TemporalContextualGating(nn.Module):
             raise ValueError(f"Expected d_model={self.d_model}, got {d}")
 
         xt = x.transpose(1, 2)  # [B, d, L]
-        y1 = self.conv_k1(xt)
-        y2 = self.conv_k2(xt)
-        z = torch.cat([y1, y2], dim=1)  # [B, 2d, L]
-        z = z.transpose(1, 2)  # [B, L, 2d]
+        if self.use_multiscale:
+            assert self.conv_k2 is not None
+            y1 = self.conv_k1(xt)
+            y2 = self.conv_k2(xt)
+            z = torch.cat([y1, y2], dim=1)  # [B, 2d, L]
+        else:
+            z = self.conv_k1(xt)
+        z = z.transpose(1, 2)  # [B, L, 2d] or [B, L, d]
         c = self.context_mlp(z)  # [B, L, d_c]
         logits = self.route_proj(c)  # [B, L, P]
-        p = F.softmax(logits, dim=-1)  # [B, L, P]
+        if self.discrete_topk > 1:
+            k = self.discrete_topk
+            topk_vals, topk_idx = torch.topk(logits, k, dim=-1)
+            p = torch.zeros_like(logits).scatter_(-1, topk_idx, F.softmax(topk_vals, dim=-1))
+        else:
+            p = F.softmax(logits, dim=-1)  # [B, L, P]
         m = torch.einsum("blk,kd->bld", p, self.mode_table)
         out = x * (1.0 + self.gamma * m)
 
