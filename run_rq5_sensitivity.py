@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""
+Sensitivity Analysis for RQ5: PatchTST on Illness dataset
+
+Two sensitivity curves:
+  Curve 1: K=8 fixed, orth_lambda varies in {0, 0.0001, 0.001, 0.01, 0.1}
+  Curve 2: orth_lambda=0.0001 fixed, K varies in {4, 8, 16, 32}
+
+Outputs saved under checkpoints/test_sensitivity/{md5}/
+"""
+import os
+import sys
+import time
+from multiprocessing import Process, Queue
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+SENSITIVITY_CKPT_SAVE_DIR = os.path.join(script_dir, "checkpoints", "test_sensitivity")
+src_dir = os.path.join(script_dir, "src")
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+
+from basicts.models.PatchTST import PatchTSTForForecasting, PatchTSTConfig
+from basicts.configs import BasicTSForecastingConfig, TCGConfig
+from basicts.runners.callback import AddAuxiliaryLoss, EarlyStopping
+from basicts import BasicTSLauncher
+
+AVAILABLE_GPUS = [0, 1, 2, 3, 4, 5, 6, 7]
+JOBS_PER_GPU = 5
+
+MODEL_NAME = "PatchTST"
+DATASET_NAME = "Illness"
+NUM_FEATURES = 7
+INPUT_LEN = 24
+OUTPUT_LENS = [24, 36, 48, 60]
+
+ORTH_LAMBDA_SENSITIVITY = [0.0, 0.0001, 0.001, 0.01, 0.1]
+K_SENSITIVITY = [4, 8, 16, 32]
+K_FIXED = 8
+ORTH_LAMBDA_FIXED = 0.0001
+
+USE_CLEAN_TARGETS = False
+
+
+def _format_orth_lambda(x: float) -> str:
+    if x == 0.0:
+        return "0"
+    exp = f"{x:.0e}"
+    return exp if "e" in exp.lower() else f"{x:g}"
+
+
+def get_model_config(input_len, output_len, num_features, tcg_num_patterns, tcg_orth_lambda):
+    cfg = PatchTSTConfig(
+        input_len=input_len,
+        output_len=output_len,
+        num_features=num_features,
+    )
+    cfg.tcg = TCGConfig(
+        enabled=True,
+        num_patterns=int(tcg_num_patterns),
+        orth_lambda=float(tcg_orth_lambda),
+    )
+    return PatchTSTForForecasting, cfg, False
+
+
+def run_experiment(input_len, output_len, gpu_id, tcg_num_patterns, tcg_orth_lambda):
+    model_class, model_config, use_timestamps = get_model_config(
+        input_len, output_len, NUM_FEATURES, tcg_num_patterns, tcg_orth_lambda
+    )
+
+    callbacks = [EarlyStopping(patience=10)]
+    if tcg_orth_lambda > 0:
+        callbacks.append(AddAuxiliaryLoss(losses=["tcg_orth"]))
+
+    cfg = BasicTSForecastingConfig(
+        model=model_class,
+        model_config=model_config,
+        dataset_name=DATASET_NAME,
+        input_len=input_len,
+        output_len=output_len,
+        use_timestamps=use_timestamps,
+        use_clean_targets=USE_CLEAN_TARGETS,
+        gpus=gpu_id,
+        ckpt_save_dir=SENSITIVITY_CKPT_SAVE_DIR,
+        num_epochs=100,
+        batch_size=64,
+        callbacks=callbacks,
+        seed=42,
+        train_data_num_workers=16,
+        val_data_num_workers=16,
+        test_data_num_workers=16,
+        train_data_pin_memory=True,
+        val_data_pin_memory=True,
+        test_data_pin_memory=True,
+    )
+    BasicTSLauncher.launch_training(cfg)
+
+
+def worker(
+    gpu_queue,
+    input_len,
+    output_len,
+    tcg_num_patterns,
+    tcg_orth_lambda,
+):
+    gpu_id = None
+    task_id = (
+        f"{MODEL_NAME} | {DATASET_NAME} | {input_len}->{output_len} | "
+        f"K={tcg_num_patterns} orth={_format_orth_lambda(tcg_orth_lambda)}"
+    )
+    try:
+        gpu_id = gpu_queue.get()
+        print(f"[Start] {task_id} on GPU {gpu_id}")
+        run_experiment(
+            input_len,
+            output_len,
+            str(gpu_id),
+            tcg_num_patterns,
+            tcg_orth_lambda,
+        )
+    except Exception as e:
+        print(f"[Error] {task_id} failed: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        if gpu_id is not None:
+            gpu_queue.put(gpu_id)
+            print(f"[Done] {task_id} released GPU {gpu_id}")
+
+
+if __name__ == "__main__":
+    gpu_queue = Queue()
+    for gid in AVAILABLE_GPUS:
+        for _ in range(JOBS_PER_GPU):
+            gpu_queue.put(gid)
+
+    processes = []
+    print(f"=== Sensitivity Analysis ===")
+    print(f"Model: {MODEL_NAME}, Dataset: {DATASET_NAME}")
+    print(f"GPU: {AVAILABLE_GPUS}, Concurrent: {len(AVAILABLE_GPUS) * JOBS_PER_GPU}")
+    print()
+    print(f"Curve 1: K={K_FIXED} fixed, orth_lambda varies:")
+    print(f"  orth_lambda: {ORTH_LAMBDA_SENSITIVITY}")
+    print()
+    print(f"Curve 2: orth_lambda={ORTH_LAMBDA_FIXED} fixed, K varies:")
+    print(f"  K: {K_SENSITIVITY}")
+    print()
+
+    total = 0
+
+    for output_len in OUTPUT_LENS:
+        for orth_lambda in ORTH_LAMBDA_SENSITIVITY:
+            p = Process(
+                target=worker,
+                args=(
+                    gpu_queue,
+                    INPUT_LEN,
+                    output_len,
+                    K_FIXED,
+                    orth_lambda,
+                ),
+            )
+            p.start()
+            processes.append(p)
+            time.sleep(0.1)
+            total += 1
+
+    for output_len in OUTPUT_LENS:
+        for k in K_SENSITIVITY:
+            if k == K_FIXED:
+                continue
+            p = Process(
+                target=worker,
+                args=(
+                    gpu_queue,
+                    INPUT_LEN,
+                    output_len,
+                    k,
+                    ORTH_LAMBDA_FIXED,
+                ),
+            )
+            p.start()
+            processes.append(p)
+            time.sleep(0.1)
+            total += 1
+
+    print(f"Scheduled {total} experiments")
+    print(f"Checkpoints saved to: {SENSITIVITY_CKPT_SAVE_DIR}")
+
+    for p in processes:
+        p.join()
+
+    print("All sensitivity experiments finished.")

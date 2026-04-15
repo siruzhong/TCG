@@ -3,35 +3,36 @@ import os
 import time
 from multiprocessing import Process, Queue
 
-# Add src directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(script_dir, 'src')
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
-# Import Models
 from basicts.models.Crossformer import Crossformer, CrossformerConfig
 from basicts.models.Informer import Informer, InformerConfig
 from basicts.models.iTransformer import iTransformerForForecasting, iTransformerConfig
 from basicts.models.PatchTST import PatchTSTForForecasting, PatchTSTConfig
 from basicts.models.TimeMixer import TimeMixerForForecasting, TimeMixerConfig
 from basicts.models.TimesNet import TimesNetForForecasting, TimesNetConfig
+from basicts.models.TimeFilter import TimeFilterForForecasting, TimeFilterConfig
+from basicts.models.WPMixer import WPMixerForForecasting, WPMixerConfig
 from basicts.configs import BasicTSForecastingConfig, TCGConfig
 from basicts.runners.callback import AddAuxiliaryLoss, EarlyStopping
 from basicts import BasicTSLauncher
 
-# --- Global Configurations ---
 AVAILABLE_GPUS = [0, 1, 2, 3, 4, 5, 6, 7]
+JOBS_PER_GPU = 6
 
-# iTransformer omitted from this sweep: iTransformerConfig has no ``tcg`` field and the
-# backbone layout is [B, num_features, d] (variate tokens), not a time-major [B, L, d] TCG path.
 MODELS = [
     "Informer",
     "Crossformer",
     "PatchTST",
     "TimesNet",
     "TimeMixer",
+    "TimeFilter",
+    "WPMixer",
 ]
+
 DATASETS = [
     ("ETTh1", 7),
     ("ETTh2", 7),
@@ -40,21 +41,20 @@ DATASETS = [
     ("Electricity", 321),
     ("Weather", 21),
     ("Illness", 7),
+    ("ExchangeRate", 8),
 ]
 
-# Length settings
 DATASET_CONFIGS = {
     "Illness": {"input_lens": [24], "output_lens": [24, 36, 48, 60]},
     "default": {"input_lens": [96], "output_lens": [96, 192, 336, 720]}
 }
 
-TCG_ORTH_LAMBDA_SEARCH = [0.0, 1e-4, 1e-3, 1e-2, 1e-1]
-TCG_NUM_PATTERNS_SEARCH = [4, 8, 16]
-USE_CLEAN_TARGETS = True
+TCG_ORTH_LAMBDA_SEARCH = [1e-4, 1e-3]
+TCG_NUM_PATTERNS_SEARCH = [8]
+USE_CLEAN_TARGETS = False
 
 
 def _format_orth_lambda(x: float) -> str:
-    """Compact string for logs (avoids long floats)."""
     if x == 0.0:
         return "0"
     exp = f"{x:.0e}"
@@ -62,20 +62,20 @@ def _format_orth_lambda(x: float) -> str:
 
 
 def get_timestamp_sizes(dataset_name: str):
-    """Helper to get timestamp features."""
     if dataset_name == "ExchangeRate":
         return [1, 7, 31, 366]
     if dataset_name == "Traffic":
         return [24, 7, 31, 366]
-    if dataset_name in ["ETTh1", "ETTh2"]: return [24, 7, 31, 366]
-    if dataset_name in ["ETTm1", "ETTm2", "SyntheticTS"]: return [96, 7, 31, 366]
-    if dataset_name.startswith("SyntheticTS"): return [96, 7, 31, 366]
+    if dataset_name in ["ETTh1", "ETTh2"]:
+        return [24, 7, 31, 366]
+    if dataset_name in ["ETTm1", "ETTm2", "SyntheticTS"]:
+        return [96, 7, 31, 366]
+    if dataset_name.startswith("SyntheticTS"):
+        return [96, 7, 31, 366]
     return [60, 7, 31, 366]
 
 
 def get_model_config(model_name, input_len, output_len, num_features, dataset_name):
-    """Factory to create model class and config using explicit keywords."""
-
     if model_name == "Crossformer":
         cfg = CrossformerConfig(
             input_len=input_len,
@@ -83,7 +83,6 @@ def get_model_config(model_name, input_len, output_len, num_features, dataset_na
             num_features=num_features
         )
         return Crossformer, cfg, False
-
     elif model_name == "Informer":
         cfg = InformerConfig(
             input_len=input_len,
@@ -94,7 +93,6 @@ def get_model_config(model_name, input_len, output_len, num_features, dataset_na
             timestamp_sizes=get_timestamp_sizes(dataset_name)
         )
         return Informer, cfg, True
-
     elif model_name == "iTransformer":
         cfg = iTransformerConfig(
             input_len=input_len,
@@ -102,7 +100,6 @@ def get_model_config(model_name, input_len, output_len, num_features, dataset_na
             num_features=num_features
         )
         return iTransformerForForecasting, cfg, False
-
     elif model_name == "PatchTST":
         cfg = PatchTSTConfig(
             input_len=input_len,
@@ -110,7 +107,6 @@ def get_model_config(model_name, input_len, output_len, num_features, dataset_na
             num_features=num_features
         )
         return PatchTSTForForecasting, cfg, False
-
     elif model_name == "TimeMixer":
         cfg = TimeMixerConfig(
             input_len=input_len,
@@ -118,7 +114,6 @@ def get_model_config(model_name, input_len, output_len, num_features, dataset_na
             num_features=num_features
         )
         return TimeMixerForForecasting, cfg, False
-
     elif model_name == "TimesNet":
         cfg = TimesNetConfig(
             input_len=input_len,
@@ -128,13 +123,25 @@ def get_model_config(model_name, input_len, output_len, num_features, dataset_na
             timestamp_sizes=get_timestamp_sizes(dataset_name)
         )
         return TimesNetForForecasting, cfg, True
-
+    elif model_name == "TimeFilter":
+        cfg = TimeFilterConfig(
+            input_len=input_len,
+            output_len=output_len,
+            num_features=num_features
+        )
+        return TimeFilterForForecasting, cfg, False
+    elif model_name == "WPMixer":
+        cfg = WPMixerConfig(
+            input_len=input_len,
+            output_len=output_len,
+            num_features=num_features
+        )
+        return WPMixerForForecasting, cfg, False
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
 
 def run_experiment(model_name, dataset_name, num_features, input_len, output_len, gpu_id, **kwargs):
-    """Setup and launch a single experiment."""
     model_class, model_config, use_timestamps = get_model_config(
         model_name, input_len, output_len, num_features, dataset_name
     )
@@ -161,21 +168,20 @@ def run_experiment(model_name, dataset_name, num_features, input_len, output_len
     BasicTSLauncher.launch_training(cfg)
 
 
-def worker_task(
+def worker_task_tcg(
     gpu_queue,
     model_name,
     dataset_name,
     num_features,
     input_len,
     output_len,
-    tcg_num_patterns: int,
-    tcg_orth_lambda: float,
+    tcg_num_patterns,
+    tcg_orth_lambda,
 ):
-    """Worker process: Acquires GPU -> Runs Exp -> Releases GPU."""
     gpu_id = None
     task_id = (
         f"{model_name} | {dataset_name} | {input_len}->{output_len} | "
-        f"K={tcg_num_patterns} orth={_format_orth_lambda(tcg_orth_lambda)}"
+        f"TCG K={tcg_num_patterns} orth={_format_orth_lambda(tcg_orth_lambda)}"
     )
 
     try:
@@ -196,7 +202,43 @@ def worker_task(
 
     except Exception as e:
         print(f"[Error] {task_id} failed: {e}")
-        import traceback; traceback.print_exc()
+        import traceback
+        traceback.print_exc()
+    finally:
+        if gpu_id is not None:
+            gpu_queue.put(gpu_id)
+            print(f"[Done] {task_id} released GPU {gpu_id}")
+
+
+def worker_task_raw(
+    gpu_queue,
+    model_name,
+    dataset_name,
+    num_features,
+    input_len,
+    output_len,
+):
+    gpu_id = None
+    task_id = f"{model_name} | {dataset_name} | {input_len}->{output_len} | RAW"
+
+    try:
+        gpu_id = gpu_queue.get()
+        print(f"[Start] {task_id} on GPU {gpu_id}")
+
+        run_experiment(
+            model_name,
+            dataset_name,
+            num_features,
+            input_len,
+            output_len,
+            str(gpu_id),
+            enable_tcg=False,
+        )
+
+    except Exception as e:
+        print(f"[Error] {task_id} failed: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         if gpu_id is not None:
             gpu_queue.put(gpu_id)
@@ -204,20 +246,28 @@ def worker_task(
 
 
 if __name__ == "__main__":
-    # Initialize GPU Queue
     gpu_queue = Queue()
     for gpu_id in AVAILABLE_GPUS:
-        gpu_queue.put(gpu_id)
+        for _ in range(JOBS_PER_GPU):
+            gpu_queue.put(gpu_id)
 
     processes = []
-    print(f"Scheduling tasks on GPUs: {AVAILABLE_GPUS}")
+    max_concurrent = len(AVAILABLE_GPUS) * JOBS_PER_GPU
+    print(
+        f"Scheduling tasks on GPUs {AVAILABLE_GPUS} "
+        f"(up to {max_concurrent} concurrent, JOBS_PER_GPU={JOBS_PER_GPU})"
+    )
+
+    tcg_combos = len(TCG_NUM_PATTERNS_SEARCH) * len(TCG_ORTH_LAMBDA_SEARCH)
     print(
         f"TCG grid: orth_lambda in {TCG_ORTH_LAMBDA_SEARCH}, "
         f"num_patterns in {TCG_NUM_PATTERNS_SEARCH} "
-        f"({len(TCG_ORTH_LAMBDA_SEARCH) * len(TCG_NUM_PATTERNS_SEARCH)} combos per run config)"
+        f"({tcg_combos} combos per config)"
     )
 
-    # One process per (model, dataset, lengths, tcg_hparams); GPUs multiplexed via queue.
+    total_tcg = 0
+    total_raw = 0
+
     for model_name in MODELS:
         for dataset_name, num_features in DATASETS:
             config = DATASET_CONFIGS.get(dataset_name, DATASET_CONFIGS["default"])
@@ -227,7 +277,7 @@ if __name__ == "__main__":
                     for tcg_num_patterns in TCG_NUM_PATTERNS_SEARCH:
                         for tcg_orth_lambda in TCG_ORTH_LAMBDA_SEARCH:
                             p = Process(
-                                target=worker_task,
+                                target=worker_task_tcg,
                                 args=(
                                     gpu_queue,
                                     model_name,
@@ -242,8 +292,25 @@ if __name__ == "__main__":
                             p.start()
                             processes.append(p)
                             time.sleep(0.1)
+                            total_tcg += 1
 
-    print(f"Scheduled {len(processes)} tasks.")
+                    p = Process(
+                        target=worker_task_raw,
+                        args=(
+                            gpu_queue,
+                            model_name,
+                            dataset_name,
+                            num_features,
+                            input_len,
+                            output_len,
+                        ),
+                    )
+                    p.start()
+                    processes.append(p)
+                    time.sleep(0.1)
+                    total_raw += 1
+
+    print(f"Scheduled {len(processes)} tasks ({total_tcg} TCG + {total_raw} RAW)")
 
     for p in processes:
         p.join()
