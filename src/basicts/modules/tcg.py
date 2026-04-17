@@ -71,10 +71,12 @@ class TemporalContextualGating(nn.Module):
             nn.Linear(ctx_in, self.d_context),
             nn.GELU(),
         )
-        self.route_proj = nn.Linear(self.d_context, num_patterns)
+        self.route_centroids = nn.Parameter(torch.randn(num_patterns, self.d_context))
+        nn.init.normal_(self.route_centroids, std=0.02)
+        self.routing_scale = nn.Parameter(torch.ones(1) * 2.0)
         self.mode_table = nn.Parameter(torch.empty(num_patterns, d_model))
         if identity_init:
-            self.gamma = nn.Parameter(torch.zeros(1))
+            self.gamma = nn.Parameter(torch.ones(1) * 0.1)
         else:
             self.gamma = nn.Parameter(torch.randn(1) * 0.01)
 
@@ -84,8 +86,6 @@ class TemporalContextualGating(nn.Module):
                 nn.init.kaiming_normal_(conv.weight, nonlinearity="linear")
                 if conv.bias is not None:
                     nn.init.zeros_(conv.bias)
-        nn.init.normal_(self.route_proj.weight, std=0.02)
-        nn.init.zeros_(self.route_proj.bias)
         nn.init.normal_(self.context_mlp[0].weight, std=0.02)
         nn.init.zeros_(self.context_mlp[0].bias)
 
@@ -116,7 +116,9 @@ class TemporalContextualGating(nn.Module):
             z = self.conv_k1(xt)
         z = z.transpose(1, 2)  # [B, L, 2d] or [B, L, d]
         c = self.context_mlp(z)  # [B, L, d_c]
-        logits = self.route_proj(c)  # [B, L, P]
+        c_norm = F.normalize(c, dim=-1) # [B, L, d_c]
+        cent_norm = F.normalize(self.route_centroids, dim=-1) # [K, d_c]
+        logits = torch.einsum("bld,kd->blk", c_norm, cent_norm) * self.routing_scale
         if self.discrete_topk > 1:
             k = self.discrete_topk
             topk_vals, topk_idx = torch.topk(logits, k, dim=-1)

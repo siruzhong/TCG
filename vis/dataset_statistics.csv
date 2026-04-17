@@ -1,0 +1,15 @@
+dataset,domain,frequency,T,C,ADF_p,spectral_entropy,VoV
+ETTh1,Energy,1 Hour,14400,7,0.0165,0.4686,0.4786
+ETTh2,Energy,1 Hour,14400,7,0.0249,0.3586,0.6536
+ETTm1,Energy,15 Min,57600,7,0.0165,0.4114,0.4743
+ETTm2,Energy,15 Min,57600,7,0.0249,0.3126,0.6411
+Weather,Climatology,10 Min,52696,21,0.0035,0.5025,2.0219
+Illness,Healthcare,1 Week,966,7,0.0722,0.5176,0.9995
+ExchangeRate,Finance,1 Day,7588,8,0.5499,0.2067,1.3221
+Solar,Energy,10 Min,52560,137,0.0000,0.2517,0.3106
+PEMS08,Traffic,5 Min,17856,170,0.0000,0.2042,0.1127
+BeijingAirQuality,Environment,1 Hour,36000,7,0.0000,0.6089,0.9100
+COVID19,Epidemiology,1 Day,1143,8,0.0438,0.5016,1.4648
+VIX,Finance,1 Day,9165,1,0.0000,0.4965,0.8722
+NABCPU,Cloud Ops,5 Min,4031,3,0.1374,0.7754,0.3955
+Sunspots,Solar Physics,1 Month,3327,1,0.0002,0.5030,0.5573

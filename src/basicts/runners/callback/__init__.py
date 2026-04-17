@@ -5,6 +5,7 @@ from .curriculum_learrning import CurriculumLearning
 from .dynamic_dropout import DropoutTSCallback
 from .early_stopping import EarlyStopping
 from .grad_accumulation import GradAccumulation
+from .log_tcg_routing import LogTCGRouting
 from .no_bp import NoBP
 from .selective_learning import SelectiveLearning
 
@@ -17,6 +18,7 @@ __ALL__ = [
     'DropoutTSCallback',
     'EarlyStopping',
     'GradAccumulation',
+    'LogTCGRouting',
     'NoBP',
     'SelectiveLearning',
 ]

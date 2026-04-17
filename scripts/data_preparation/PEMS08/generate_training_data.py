@@ -20,12 +20,13 @@ output_dir = base_dir + f'/datasets/{dataset_name}'
 target_channel = [0]  # Target traffic flow channel
 add_time_of_day = True  # Add time of day as a feature
 add_day_of_week = True  # Add day of the week as a feature
-add_day_of_month = False  # Add day of the month as a feature
-add_day_of_year = False  # Add day of the year as a feature
+add_day_of_month = True  # Add day of the month as a feature
+add_day_of_year = True  # Add day of the year as a feature
 steps_per_day = 288  # Number of time steps per day
 frequency = 1440 // steps_per_day
+start_date = '2016-07-01 00:00:00'
 domain = 'traffic flow'
-timestamps_desc = ['time of day', 'day of week']
+timestamps_desc = ['time of day', 'day of week', 'day of month', 'day of year']
 regular_settings = {
     'train_val_test_ratio': [0.6, 0.2, 0.2],
     'norm_each_channel': False,
@@ -44,8 +45,10 @@ def load_and_preprocess_data():
     return data
 
 def add_temporal_features(df):
-    '''Add time of day and day of week as features to the data.'''
+    '''Add time of day, day of week, day of month, and day of year features.'''
+    import pandas as pd
     l = df.shape[0]
+    index = pd.date_range(start=start_date, periods=l, freq=f'{frequency}min')
     timestamps = []
 
     if add_time_of_day:
@@ -53,8 +56,16 @@ def add_temporal_features(df):
         timestamps.append(time_of_day)
 
     if add_day_of_week:
-        day_of_week = np.array([(i // steps_per_day) % 7 / 7 for i in range(l)])
+        day_of_week = index.dayofweek.values / 7
         timestamps.append(day_of_week)
+
+    if add_day_of_month:
+        day_of_month = (index.day.values - 1) / 31
+        timestamps.append(day_of_month)
+
+    if add_day_of_year:
+        day_of_year = (index.dayofyear.values - 1) / 366
+        timestamps.append(day_of_year)
 
     timestamps = np.stack(timestamps, axis=-1)
     return timestamps

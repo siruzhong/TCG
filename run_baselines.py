@@ -34,24 +34,42 @@ MODELS = [
 ]
 
 DATASETS = [
-    ("ETTh1", 7),
-    ("ETTh2", 7),
-    ("ETTm1", 7),
-    ("ETTm2", 7),
-    ("Electricity", 321),
-    ("Weather", 21),
-    ("Illness", 7),
-    ("ExchangeRate", 8),
+    # ("ETTh1", 7),
+    # ("ETTh2", 7),
+    # ("ETTm1", 7),
+    # ("ETTm2", 7),
+    # ("Weather", 21),
+    # ("Illness", 7),
+    # ("ExchangeRate", 8),
+    # ("Solar", 137),
+    # ("PEMS08", 170),
+    # ("BeijingAirQuality", 7),
+    ("COVID19", 8),
+    ("VIX", 1),
+    ("NABCPU", 3),
+    ("Sunspots", 1),
 ]
 
+# Short datasets (few hundred to few thousand points) need short horizons to
+# keep enough train samples after windowing. Values were chosen so that
+# train_len - input_len - max(output_len) + 1 >= ~200 samples.
 DATASET_CONFIGS = {
-    "Illness": {"input_lens": [24], "output_lens": [24, 36, 48, 60]},
-    "default": {"input_lens": [96], "output_lens": [96, 192, 336, 720]}
+    "Illness":  {"input_lens": [24], "output_lens": [24, 36, 48, 60]},
+    "PEMS08":   {"input_lens": [96], "output_lens": [12, 24, 48, 96]},
+    "COVID19":  {"input_lens": [36], "output_lens": [7, 14, 28, 60]},
+    "NABCPU":   {"input_lens": [96], "output_lens": [24, 48, 96, 192]},
+    "Sunspots": {"input_lens": [36], "output_lens": [12, 24, 48, 96]},
+    "default":  {"input_lens": [96], "output_lens": [96, 192, 336, 720]},
 }
 
-TCG_ORTH_LAMBDA_SEARCH = [1e-4, 1e-3]
-TCG_NUM_PATTERNS_SEARCH = [8]
+TCG_ORTH_LAMBDA_SEARCH = [1e-4]
+TCG_NUM_PATTERNS_SEARCH = [4, 8]
 USE_CLEAN_TARGETS = False
+
+# Patch-based models benefit from disabling TCG's multi-scale depthwise conv
+# (use k=1 point-wise only). Patching already encodes local temporal structure,
+# so the k=3/7 kernels tend to interfere rather than help.
+PATCH_MODELS_NO_CONV = {"PatchTST", "WPMixer", "TimeFilter"}
 
 
 def _format_orth_lambda(x: float) -> str:
@@ -72,6 +90,18 @@ def get_timestamp_sizes(dataset_name: str):
         return [96, 7, 31, 366]
     if dataset_name.startswith("SyntheticTS"):
         return [96, 7, 31, 366]
+    if dataset_name == "Solar":
+        return [144, 7, 31, 366]
+    if dataset_name == "PEMS08":
+        return [288, 7, 31, 366]
+    if dataset_name == "BeijingAirQuality":
+        return [24, 7, 31, 366]
+    if dataset_name in ("COVID19", "VIX"):
+        return [1, 7, 31, 366]
+    if dataset_name == "NABCPU":
+        return [288, 7, 31, 366]
+    if dataset_name == "Sunspots":
+        return [1, 1, 1, 12]
     return [60, 7, 31, 366]
 
 
@@ -148,10 +178,12 @@ def run_experiment(model_name, dataset_name, num_features, input_len, output_len
 
     callbacks = [EarlyStopping(patience=10)]
     if kwargs.get("enable_tcg", True) and hasattr(model_config, "tcg"):
+        use_multiscale = model_name not in PATCH_MODELS_NO_CONV
         tcg_cfg = TCGConfig(
             enabled=True,
             num_patterns=int(kwargs.get("tcg_num_patterns", kwargs.get("tcg_K", 8))),
             orth_lambda=float(kwargs.get("tcg_orth_lambda", 0.01)),
+            use_multiscale=use_multiscale,
         )
         model_config.tcg = tcg_cfg
         if tcg_cfg.orth_lambda > 0:
@@ -179,9 +211,10 @@ def worker_task_tcg(
     tcg_orth_lambda,
 ):
     gpu_id = None
+    ms_tag = "k1" if model_name in PATCH_MODELS_NO_CONV else "ms"
     task_id = (
         f"{model_name} | {dataset_name} | {input_len}->{output_len} | "
-        f"TCG K={tcg_num_patterns} orth={_format_orth_lambda(tcg_orth_lambda)}"
+        f"TCG[{ms_tag}] K={tcg_num_patterns} orth={_format_orth_lambda(tcg_orth_lambda)}"
     )
 
     try:

@@ -26,8 +26,10 @@ def _apply_tcg_bnpd(
         return hidden_states, extra
     b, n, p, d = hidden_states.shape
     flat = hidden_states.reshape(b * n, p, d)
-    flat = tcg(flat)
+    flat, tcg_aux = tcg(flat, return_aux=True)
     hidden_states = flat.reshape(b, n, p, d)
+    if tcg_aux and "routing_probs" in tcg_aux:
+        extra["routing_probs"] = tcg_aux["routing_probs"]
     if orth_lambda > 0:
         extra["tcg_orth"] = orth_lambda * tcg_orthogonal_loss(tcg.mode_table)
     return hidden_states, extra
