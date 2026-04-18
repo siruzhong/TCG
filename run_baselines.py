@@ -21,7 +21,7 @@ from basicts.runners.callback import AddAuxiliaryLoss, EarlyStopping
 from basicts import BasicTSLauncher
 
 AVAILABLE_GPUS = [0, 1, 2, 3, 4, 5, 6, 7]
-JOBS_PER_GPU = 6
+JOBS_PER_GPU = 8
 
 MODELS = [
     "Informer",
@@ -34,16 +34,14 @@ MODELS = [
 ]
 
 DATASETS = [
-    # ("ETTh1", 7),
-    # ("ETTh2", 7),
-    # ("ETTm1", 7),
-    # ("ETTm2", 7),
-    # ("Weather", 21),
-    # ("Illness", 7),
-    # ("ExchangeRate", 8),
-    # ("Solar", 137),
-    # ("PEMS08", 170),
-    # ("BeijingAirQuality", 7),
+    ("ETTh1", 7),
+    ("ETTh2", 7),
+    ("ETTm1", 7),
+    ("ETTm2", 7),
+    ("Weather", 21),
+    ("Illness", 7),
+    ("ExchangeRate", 8),
+    ("BeijingAirQuality", 7),
     ("COVID19", 8),
     ("VIX", 1),
     ("NABCPU", 3),
@@ -55,21 +53,55 @@ DATASETS = [
 # train_len - input_len - max(output_len) + 1 >= ~200 samples.
 DATASET_CONFIGS = {
     "Illness":  {"input_lens": [24], "output_lens": [24, 36, 48, 60]},
-    "PEMS08":   {"input_lens": [96], "output_lens": [12, 24, 48, 96]},
     "COVID19":  {"input_lens": [36], "output_lens": [7, 14, 28, 60]},
     "NABCPU":   {"input_lens": [96], "output_lens": [24, 48, 96, 192]},
     "Sunspots": {"input_lens": [36], "output_lens": [12, 24, 48, 96]},
     "default":  {"input_lens": [96], "output_lens": [96, 192, 336, 720]},
 }
 
-TCG_ORTH_LAMBDA_SEARCH = [1e-4]
-TCG_NUM_PATTERNS_SEARCH = [4, 8]
+TCG_ORTH_LAMBDA_SEARCH = [1e-4, 1e-3, 0.0]
+TCG_NUM_PATTERNS_SEARCH = [4, 8, 16]
 USE_CLEAN_TARGETS = False
 
 # Patch-based models benefit from disabling TCG's multi-scale depthwise conv
 # (use k=1 point-wise only). Patching already encodes local temporal structure,
 # so the k=3/7 kernels tend to interfere rather than help.
 PATCH_MODELS_NO_CONV = {"PatchTST", "WPMixer", "TimeFilter"}
+
+CHECKPOINT_BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkpoints")
+
+
+def _check_results_exist(model_name, dataset_name, input_len, output_len, enable_tcg, tcg_num_patterns=None, tcg_orth_lambda=None):
+    base_dir = os.path.join(CHECKPOINT_BASE, model_name, f"{dataset_name}_100_{input_len}_{output_len}")
+    if not os.path.exists(base_dir):
+        return False
+    
+    for subdir in os.listdir(base_dir):
+        full_path = os.path.join(base_dir, subdir)
+        if not os.path.isdir(full_path):
+            continue
+        metrics_file = os.path.join(full_path, "test_metrics.json")
+        cfg_file = os.path.join(full_path, "cfg.json")
+        if not os.path.exists(metrics_file) or not os.path.exists(cfg_file):
+            continue
+        try:
+            import json
+            with open(cfg_file, 'r') as f:
+                cfg = json.load(f)
+            tcg_params = cfg.get("model_config", {}).get("tcg", {}).get("params", {})
+            cfg_enabled = tcg_params.get("enabled", "")
+            is_tcg_enabled = str(cfg_enabled).lower() == "true"
+            if enable_tcg != is_tcg_enabled:
+                continue
+            if enable_tcg and tcg_num_patterns is not None:
+                cfg_num_patterns = int(tcg_params.get("num_patterns", 0))
+                cfg_orth_lambda = float(tcg_params.get("orth_lambda", 0))
+                if cfg_num_patterns != tcg_num_patterns or cfg_orth_lambda != tcg_orth_lambda:
+                    continue
+            return True
+        except Exception:
+            continue
+    return False
 
 
 def _format_orth_lambda(x: float) -> str:
@@ -90,10 +122,6 @@ def get_timestamp_sizes(dataset_name: str):
         return [96, 7, 31, 366]
     if dataset_name.startswith("SyntheticTS"):
         return [96, 7, 31, 366]
-    if dataset_name == "Solar":
-        return [144, 7, 31, 366]
-    if dataset_name == "PEMS08":
-        return [288, 7, 31, 366]
     if dataset_name == "BeijingAirQuality":
         return [24, 7, 31, 366]
     if dataset_name in ("COVID19", "VIX"):
@@ -157,7 +185,8 @@ def get_model_config(model_name, input_len, output_len, num_features, dataset_na
         cfg = TimeFilterConfig(
             input_len=input_len,
             output_len=output_len,
-            num_features=num_features
+            num_features=num_features,
+            patch_len=6,
         )
         return TimeFilterForForecasting, cfg, False
     elif model_name == "WPMixer":
@@ -210,13 +239,17 @@ def worker_task_tcg(
     tcg_num_patterns,
     tcg_orth_lambda,
 ):
-    gpu_id = None
     ms_tag = "k1" if model_name in PATCH_MODELS_NO_CONV else "ms"
     task_id = (
         f"{model_name} | {dataset_name} | {input_len}->{output_len} | "
         f"TCG[{ms_tag}] K={tcg_num_patterns} orth={_format_orth_lambda(tcg_orth_lambda)}"
     )
 
+    if _check_results_exist(model_name, dataset_name, input_len, output_len, True, tcg_num_patterns, tcg_orth_lambda):
+        print(f"[Skip] {task_id} - results already exist")
+        return
+
+    gpu_id = None
     try:
         gpu_id = gpu_queue.get()
         print(f"[Start] {task_id} on GPU {gpu_id}")
@@ -251,9 +284,13 @@ def worker_task_raw(
     input_len,
     output_len,
 ):
-    gpu_id = None
     task_id = f"{model_name} | {dataset_name} | {input_len}->{output_len} | RAW"
 
+    if _check_results_exist(model_name, dataset_name, input_len, output_len, False):
+        print(f"[Skip] {task_id} - results already exist")
+        return
+
+    gpu_id = None
     try:
         gpu_id = gpu_queue.get()
         print(f"[Start] {task_id} on GPU {gpu_id}")
