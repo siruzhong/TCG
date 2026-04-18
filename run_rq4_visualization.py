@@ -6,7 +6,13 @@ Adapted for new TCG architecture (route_centroids + cosine similarity).
 Only requires routing_probs - no intensity_gate needed.
 
 Usage:
-    python run_rq4_visualization.py --checkpoint <path> --dataset <name> --output <dir>
+    python run_rq4_visualization.py --checkpoint <path> --dataset <name>
+
+Recommended (multi-regime, longer context):
+    python run_rq4_visualization.py \
+        --checkpoint checkpoints/test_ablation/a849f714f87d07857a262cf8bd4b6e68/PatchTSTForForecasting_best_val_MAE.pt \
+        --dataset ExchangeRate --input_len 96 --output_len 96 --k 8 \
+        --samples 16 --fig_w 10.5 --fig_h 2.6
 """
 import argparse
 import os
@@ -22,6 +28,7 @@ if src_dir not in sys.path:
 
 
 DATASET_CONFIG = {
+    "Sunspots": {"input_len": 36, "output_len": 12, "num_features": 1},
     "Illness": {"input_len": 24, "output_len": 24, "num_features": 7},
     "ExchangeRate": {"input_len": 336, "output_len": 96, "num_features": 8},
 }
@@ -56,8 +63,9 @@ def visualize_routing_interpretability(
     raw_input,
     routing_probs,
     save_path,
-    figsize=(7, 2.0),
+    figsize=(10.5, 2.6),
     num_patterns=8,
+    enhance_contrast=True,
 ):
     l = raw_input.shape[0]
     k = routing_probs.shape[0]
@@ -66,20 +74,27 @@ def visualize_routing_interpretability(
 
     import matplotlib.pyplot as plt
     plt.rcParams.update({
-        "font.family": "serif",
+        "font.family": "DejaVu Sans",
         "font.size": 8,
         "axes.labelsize": 8,
         "xtick.labelsize": 7,
         "ytick.labelsize": 7,
         "figure.dpi": 300,
+        "axes.facecolor": "#F7FAFC",
+        "figure.facecolor": "#FCFEFF",
     })
 
-    fig, axes = plt.subplots(1, 3, figsize=figsize,
-                              width_ratios=[2.0, 0.8, 2.2],
-                              gridspec_kw={"wspace": 0.25})
+    fig, axes = plt.subplots(
+        1,
+        3,
+        figsize=figsize,
+        width_ratios=[2.9, 1.15, 2.95],
+        gridspec_kw={"wspace": 0.30},
+    )
 
     ax = axes[0]
-    ax.plot(time_steps, raw_input, color="#333333", linewidth=1.0)
+    ax.plot(time_steps, raw_input, color="#334155", linewidth=1.0)
+    ax.fill_between(time_steps, raw_input, np.min(raw_input), color="#DBEAFE", alpha=0.25)
     ax.set_xlim(0, l - 1)
     ax.set_xticks(np.arange(0, l, max(1, l // 4)))
     ax.set_xticklabels(np.arange(0, l, max(1, l // 4)))
@@ -88,15 +103,31 @@ def visualize_routing_interpretability(
     ax.set_title("(a) Input Time Series", fontsize=8, pad=4)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", color="#D7E3F4", linewidth=0.45, alpha=0.6)
     ax.tick_params(direction="in", length=1.5)
 
     ax = axes[1]
-    cmap = plt.cm.tab10
-    for pid in range(num_patterns):
-        mask = dominant_pattern == pid
-        if mask.any():
-            ax.fill_between(time_steps, 0, 1, where=mask,
-                          color=cmap(pid % 10), alpha=0.7)
+    import matplotlib.colors as mcolors
+    base_dom_palette = [
+        "#CFE8FF", "#D9CCFF", "#FFDCC5", "#CDEFD9", "#FFE3F0",
+        "#D5F4F7", "#FBE7C3", "#E1E8F0", "#E8DFF5", "#D8F3DC",
+    ]
+    dom_palette = [base_dom_palette[i % len(base_dom_palette)] for i in range(num_patterns)]
+    dom_cmap = mcolors.ListedColormap(dom_palette)
+    ax.imshow(
+        dominant_pattern[np.newaxis, :],
+        aspect="auto",
+        cmap=dom_cmap,
+        vmin=-0.5,
+        vmax=num_patterns - 0.5,
+        interpolation="nearest",
+        extent=[0, l - 1, 0, 1],
+    )
+
+    switch_points = np.where(np.diff(dominant_pattern) != 0)[0] + 1
+    for sp in switch_points:
+        ax.axvline(sp, color="#64748B", linewidth=0.6, alpha=0.6, linestyle=(0, (2, 2)))
+
     ax.set_xlim(0, l - 1)
     ax.set_xticks(np.arange(0, l, max(1, l // 4)))
     ax.set_xticklabels(np.arange(0, l, max(1, l // 4)))
@@ -109,9 +140,21 @@ def visualize_routing_interpretability(
     ax.tick_params(direction="in", length=1.5)
 
     ax = axes[2]
-    import seaborn as sns
-    cmap_heat = sns.color_palette("YlGnBu", as_cmap=True)
-    im = ax.imshow(routing_probs, aspect="auto", cmap=cmap_heat, vmin=0, vmax=1)
+    cmap_heat = plt.cm.Blues
+    if enhance_contrast:
+        rp_min = float(np.percentile(routing_probs, 2))
+        rp_max = float(np.percentile(routing_probs, 98))
+        if rp_max - rp_min < 1e-6:
+            rp_min = float(np.min(routing_probs))
+            rp_max = float(np.max(routing_probs))
+        if rp_max - rp_min < 1e-6:
+            rp_min, rp_max = 0.0, 1.0
+        show_routing = np.clip(routing_probs, rp_min, rp_max)
+    else:
+        rp_min, rp_max = 0.0, 1.0
+        show_routing = routing_probs
+
+    im = ax.imshow(show_routing, aspect="auto", cmap=cmap_heat, vmin=rp_min, vmax=rp_max)
     ax.set_xlabel("Time Steps", fontsize=8)
     ax.set_xticks(np.arange(0, l, max(1, l // 5)))
     ax.set_xticklabels(np.arange(0, l, max(1, l // 5)))
@@ -123,13 +166,15 @@ def visualize_routing_interpretability(
     ax.tick_params(direction="in", length=1.5)
 
     cbar = plt.colorbar(im, ax=ax, fraction=0.025, pad=0.02, aspect=15)
-    cbar.set_label(r"$\pi_k$", fontsize=8)
+    cbar_label = r"$\pi_k$"
+    if enhance_contrast:
+        cbar_label += " (contrast stretched)"
+    cbar.set_label(cbar_label, fontsize=8)
     cbar.ax.tick_params(labelsize=6)
 
     plt.savefig(f"{save_path}.pdf", dpi=300, bbox_inches="tight", pad_inches=0.05)
-    plt.savefig(f"{save_path}.png", dpi=300, bbox_inches="tight", pad_inches=0.05)
     plt.close()
-    print(f"Saved: {save_path}.pdf / .png")
+    print(f"Saved: {save_path}.pdf")
 
 
 def select_best_sample(routing_timestep, time_series_batch, num_features=1):
@@ -199,9 +244,9 @@ def main():
     parser.add_argument("--checkpoint", type=str,
                         default="checkpoints/test_logits/9378b912cebedfed27f6fff60f402473/PatchTSTForForecasting_best_val_MAE.pt",
                         help="Path to model checkpoint")
-    parser.add_argument("--dataset", type=str, default="Illness",
-                        choices=["Illness", "ExchangeRate"])
-    parser.add_argument("--output", type=str, default="./rq4_visualizations",
+    parser.add_argument("--dataset", type=str, default="Sunspots",
+                        choices=["Sunspots", "Illness", "ExchangeRate"])
+    parser.add_argument("--output", type=str, default="./vis",
                         help="Output directory")
     parser.add_argument("--split", type=str, default="test",
                         choices=["train", "val", "test"])
@@ -210,6 +255,10 @@ def main():
     parser.add_argument("--output_len", type=int, default=None)
     parser.add_argument("--samples", type=int, default=8,
                         help="Number of samples to visualize")
+    parser.add_argument("--fig_w", type=float, default=10.5,
+                        help="Figure width in inches")
+    parser.add_argument("--fig_h", type=float, default=2.6,
+                        help="Figure height in inches")
     args = parser.parse_args()
 
     dataset_cfg = DATASET_CONFIG[args.dataset]
@@ -331,18 +380,24 @@ def main():
     else:
         raw_norm = raw_sel
 
-    prefix = "ili" if args.dataset == "Illness" else "exchange"
+    prefix_map = {
+        "Sunspots": "sunspots",
+        "Illness": "ili",
+        "ExchangeRate": "exchange",
+    }
+    prefix = prefix_map.get(args.dataset, args.dataset.lower())
     save_path = os.path.join(args.output, f"{prefix}_tcm_routing")
 
     visualize_routing_interpretability(
         raw_norm,
         routing_vis,
         save_path,
+        figsize=(args.fig_w, args.fig_h),
         num_patterns=K,
     )
 
     print(f"\n=== Visualization Complete ===")
-    print(f"Outputs: {save_path}.pdf / .png")
+    print(f"Outputs: {save_path}.pdf")
 
 
 if __name__ == "__main__":
