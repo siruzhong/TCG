@@ -25,6 +25,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import re
@@ -79,6 +80,40 @@ def _ckpt_subdir(model_name: str) -> str:
 MODELS = list(RB_MODELS)
 MARKDOWN = os.path.join(REPO_ROOT, "tcg_result.md")
 CHECKPOINTS = os.path.join(REPO_ROOT, "checkpoints")
+
+# Optional dataset ordering source. If this CSV exists (produced by
+# ``vis/dataset_heterogeneity_analysis.py``), datasets will be emitted in its
+# row order -- which is by heterogeneity score, highest first. If it is
+# missing, we fall back to ``run_baselines.DATASETS`` declaration order.
+THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+HETEROGENEITY_CSV = os.path.join(THIS_DIR, "dataset_heterogeneity_statistic.csv")
+
+
+def _resolve_dataset_order() -> list:
+    """Return the list of (dataset_name, C) tuples in the order to emit them.
+
+    Priority: heterogeneity CSV (sorted highest -> lowest) over RB_DATASETS.
+    Datasets present in RB_DATASETS but missing from the CSV are appended at
+    the end (so new datasets auto-integrate without manual re-sorting).
+    """
+    rb_by_name = dict(RB_DATASETS)
+    if not os.path.exists(HETEROGENEITY_CSV):
+        return list(RB_DATASETS)
+
+    ordered_names, seen = [], set()
+    with open(HETEROGENEITY_CSV) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            name = row.get("dataset", "").strip()
+            if name and name in rb_by_name and name not in seen:
+                ordered_names.append(name)
+                seen.add(name)
+    # Append any RB-declared datasets not present in the CSV (stable order).
+    for name, C in RB_DATASETS:
+        if name not in seen:
+            ordered_names.append(name)
+            seen.add(name)
+    return [(name, rb_by_name.get(name, 0)) for name in ordered_names]
 
 
 # --------------------------------------------------------------------------- #
@@ -340,7 +375,7 @@ def merge_and_emit(existing: dict, disk: dict, model_order: list | None = None):
     changes = {"fill": [], "improve": [], "unchanged_empty": []}
     order = model_order if model_order else MODELS
     n_cols = 2 * len(order)
-    for ds_name, _ in RB_DATASETS:
+    for ds_name, _ in _resolve_dataset_order():
         ds_md = MD_NAME.get(ds_name, ds_name)
         horizons = _horizons_of(ds_name)
         avg_accumulator = [[] for _ in range(n_cols)]
@@ -414,7 +449,7 @@ def _print_summary(changes: dict):
 
 def _print_completeness_matrix(disk: dict, existing: dict):
     print("\n== Completeness matrix (per dataset/horizon, R/T = raw/tcg available) ==")
-    for ds_name, _ in RB_DATASETS:
+    for ds_name, _ in _resolve_dataset_order():
         print(f"\n-- {ds_name} --")
         print(f"{'horizon':>8}  " + " ".join(f"{m:<11s}" for m in MODELS))
         for h in _horizons_of(ds_name):
@@ -475,10 +510,16 @@ def main():
               f"({len(prefix) + len(new_rows) + len(suffix)} lines)")
         return
 
-    if (len(changes["fill"]) == 0 and len(changes["improve"]) == 0
-            and os.path.exists(args.path)):
-        print(f"\nNo changes needed; {args.path} already up-to-date.")
-        return
+    # Skip write iff the file is byte-identical to what we would emit. This
+    # catches both cell-level changes AND row-order / header changes, so a
+    # reshuffle (e.g. after updating the heterogeneity CSV) still triggers
+    # an in-place rewrite.
+    if os.path.exists(args.path):
+        with open(args.path) as f:
+            existing_content = f.read()
+        if existing_content == content:
+            print(f"\nNo changes needed; {args.path} already up-to-date.")
+            return
 
     with open(args.path, "w") as f:
         f.write(content)
