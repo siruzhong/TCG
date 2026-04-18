@@ -73,8 +73,6 @@ DATASETS = [
     ("Weather",           "Climatology",   "10 Min",   10),
     ("Illness",           "Healthcare",    "1 Week",   7 * 24 * 60),
     ("ExchangeRate",      "Finance",       "1 Day",    24 * 60),
-    ("Solar",             "Energy",        "10 Min",   10),
-    ("PEMS08",            "Traffic",       "5 Min",    5),
     ("BeijingAirQuality", "Environment",   "1 Hour",   60),
     ("COVID19",           "Epidemiology",  "1 Day",    24 * 60),
     ("VIX",               "Finance",       "1 Day",    24 * 60),
@@ -227,10 +225,10 @@ def attach_composite_score(stats_list: list[dict]) -> list[dict]:
 def plot_panels(sorted_stats: list[dict], info_by_name: dict) -> None:
     rcParams.update({"font.size": 9, "pdf.fonttype": 42, "ps.fonttype": 42})
     n = len(sorted_stats)
-    ncols = 7
+    ncols = 4
     nrows = int(np.ceil(n / ncols))
     fig, axes = plt.subplots(nrows, ncols,
-                             figsize=(ncols * 2.8, nrows * 2.1),
+                             figsize=(ncols * 4.0, nrows * 2.4),
                              constrained_layout=True)
     axes = np.array(axes).reshape(-1)
 

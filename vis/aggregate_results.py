@@ -50,12 +50,11 @@ except Exception:
     RB_DATASETS = [
         ("ETTh1", 7), ("ETTh2", 7), ("ETTm1", 7), ("ETTm2", 7),
         ("Weather", 21), ("Illness", 7), ("ExchangeRate", 8),
-        ("Solar", 137), ("PEMS08", 170), ("BeijingAirQuality", 7),
-        ("COVID19", 8), ("VIX", 1), ("NABCPU", 3), ("Sunspots", 1),
+        ("BeijingAirQuality", 7), ("COVID19", 8), ("VIX", 1), 
+        ("NABCPU", 3), ("Sunspots", 1),
     ]
     RB_CONFIGS = {
         "Illness":  {"input_lens": [24], "output_lens": [24, 36, 48, 60]},
-        "PEMS08":   {"input_lens": [96], "output_lens": [12, 24, 48, 96]},
         "COVID19":  {"input_lens": [36], "output_lens": [7, 14, 28, 60]},
         "NABCPU":   {"input_lens": [96], "output_lens": [24, 48, 96, 192]},
         "Sunspots": {"input_lens": [36], "output_lens": [12, 24, 48, 96]},
