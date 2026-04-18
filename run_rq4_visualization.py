@@ -12,7 +12,7 @@ Recommended (multi-regime, longer context):
     python run_rq4_visualization.py \
         --checkpoint checkpoints/test_ablation/a849f714f87d07857a262cf8bd4b6e68/PatchTSTForForecasting_best_val_MAE.pt \
         --dataset ExchangeRate --input_len 96 --output_len 96 --k 8 \
-        --samples 16 --fig_w 10.5 --fig_h 2.6
+        --samples 16 --fig_w 10 --fig_h 2.6
 """
 import argparse
 import os
@@ -20,6 +20,8 @@ import sys
 
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(script_dir, "src")
@@ -80,8 +82,8 @@ def visualize_routing_interpretability(
         "xtick.labelsize": 7,
         "ytick.labelsize": 7,
         "figure.dpi": 300,
-        "axes.facecolor": "#F7FAFC",
-        "figure.facecolor": "#FCFEFF",
+        "axes.facecolor": "white",
+        "figure.facecolor": "white",
     })
 
     fig, axes = plt.subplots(
@@ -89,7 +91,7 @@ def visualize_routing_interpretability(
         3,
         figsize=figsize,
         width_ratios=[2.9, 1.15, 2.95],
-        gridspec_kw={"wspace": 0.30},
+        gridspec_kw={"wspace": 0.15},
     )
 
     ax = axes[0]
