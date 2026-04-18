@@ -116,6 +116,18 @@ def _resolve_dataset_order() -> list:
     return [(name, rb_by_name.get(name, 0)) for name in ordered_names]
 
 
+def _resolve_emit_datasets(existing: dict) -> list:
+    if existing:
+        ordered = list(existing.keys())
+        seen = set(ordered)
+        for name, _ in _resolve_dataset_order():
+            if name not in seen:
+                ordered.append(name)
+                seen.add(name)
+        return ordered
+    return [name for name, _ in _resolve_dataset_order()]
+
+
 # --------------------------------------------------------------------------- #
 # Cfg / metric parsing
 # --------------------------------------------------------------------------- #
@@ -375,7 +387,7 @@ def merge_and_emit(existing: dict, disk: dict, model_order: list | None = None):
     changes = {"fill": [], "improve": [], "unchanged_empty": []}
     order = model_order if model_order else MODELS
     n_cols = 2 * len(order)
-    for ds_name, _ in _resolve_dataset_order():
+    for ds_name in _resolve_emit_datasets(existing):
         ds_md = MD_NAME.get(ds_name, ds_name)
         horizons = _horizons_of(ds_name)
         avg_accumulator = [[] for _ in range(n_cols)]
@@ -449,7 +461,7 @@ def _print_summary(changes: dict):
 
 def _print_completeness_matrix(disk: dict, existing: dict):
     print("\n== Completeness matrix (per dataset/horizon, R/T = raw/tcg available) ==")
-    for ds_name, _ in _resolve_dataset_order():
+    for ds_name in _resolve_emit_datasets(existing):
         print(f"\n-- {ds_name} --")
         print(f"{'horizon':>8}  " + " ".join(f"{m:<11s}" for m in MODELS))
         for h in _horizons_of(ds_name):
