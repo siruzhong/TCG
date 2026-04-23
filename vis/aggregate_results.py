@@ -67,7 +67,8 @@ MD_NAME = {"Illness": "ILI"}
 
 
 # Keep the *display* order of the table in sync with the model list so that
-# new models appear at the end. Each model contributes two columns: _raw and _tcg.
+# new models appear at the end. Each model contributes two columns (_raw / _tcg),
+# except TCMNet which only has one column (it is a standalone model without raw/tcg).
 # The checkpoint directory name sometimes differs from the logical model name;
 # that mapping is handled by _ckpt_subdir.
 def _ckpt_subdir(model_name: str) -> str:
@@ -177,7 +178,11 @@ def _input_len_of(ds_name: str) -> int:
 
 
 def collect_disk() -> dict:
-    """disk[model][dataset][horizon] = {"raw": {MSE,MAE}|None, "tcg": {...}|None, "tcg_hp": (...)}."""
+    """disk[model][dataset][horizon] = {"raw": {MSE,MAE}|None, "tcg": {...}|None}.
+
+    For TCMNet (standalone model without raw/tcg distinction), the best result
+    across all hyperparameters is stored under key "" (empty string).
+    """
     disk = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
     for model_name in MODELS:
         base = os.path.join(CHECKPOINTS, _ckpt_subdir(model_name))
@@ -187,7 +192,8 @@ def collect_disk() -> dict:
             il = _input_len_of(ds_name)
             for h in _horizons_of(ds_name):
                 pattern = os.path.join(base, f"{ds_name}_*_{il}_{h}", "*")
-                raw_best, tcg_best, tcg_hp = None, None, None
+                raw_best, tcg_best = None, None
+                tcmnet_best = None
                 for run_dir in glob.glob(pattern):
                     cfg_path = os.path.join(run_dir, "cfg.json")
                     if not os.path.exists(cfg_path):
@@ -199,15 +205,21 @@ def collect_disk() -> dict:
                     m = _read_metrics(run_dir)
                     if m is None:
                         continue
-                    if _is_tcg_enabled(cfg):
+                    if model_name == "TCMNet":
+                        if tcmnet_best is None or m["MSE"] < tcmnet_best["MSE"]:
+                            tcmnet_best = m
+                    elif _is_tcg_enabled(cfg):
                         if tcg_best is None or m["MSE"] < tcg_best["MSE"]:
-                            tcg_best, tcg_hp = m, _tcg_key(cfg)
+                            tcg_best = m
                     else:
                         if raw_best is None or m["MSE"] < raw_best["MSE"]:
                             raw_best = m
-                disk[model_name][ds_name][h] = {
-                    "raw": raw_best, "tcg": tcg_best, "tcg_hp": tcg_hp,
-                }
+                if model_name == "TCMNet":
+                    disk[model_name][ds_name][h] = {"": tcmnet_best}
+                else:
+                    disk[model_name][ds_name][h] = {
+                        "raw": raw_best, "tcg": tcg_best,
+                    }
     return disk
 
 
@@ -232,14 +244,19 @@ def _cell(v):
 
 
 def _parse_header_column_map(header_cells: list) -> dict:
-    """Map column-index-in-body-row -> (model_name, kind) where kind in {raw, tcg}.
+    """Map column-index-in-body-row -> (model_name, kind) where kind in {raw, tcg, ''}.
 
     ``header_cells`` is the list BETWEEN the first two pipes of the header row,
     minus the first two (``dataset``, ``horizon``). Unknown columns are skipped.
+    TCMNet has a single column (no _raw/_tcg suffix).
     """
     mapping = {}
     for i, name in enumerate(header_cells):
-        m = re.match(r"^(\w+)_(raw|tcg)$", name.strip())
+        s = name.strip()
+        if s == "TCMNet":
+            mapping[i] = ("TCMNet", "")
+            continue
+        m = re.match(r"^(\w+)_(raw|tcg)$", s)
         if not m:
             continue
         mapping[i] = (m.group(1), m.group(2))
@@ -339,14 +356,17 @@ def _header_row(model_order: list | None = None) -> str:
     order = model_order if model_order else MODELS
     cells = ["dataset", "horizon"]
     for m in order:
-        cells.append(f"{m}_raw")
-        cells.append(f"{m}_tcg")
+        if m == "TCMNet":
+            cells.append(m)
+        else:
+            cells.append(f"{m}_raw")
+            cells.append(f"{m}_tcg")
     return "| " + " | ".join(cells) + " |"
 
 
 def _separator_row(model_order: list | None = None) -> str:
     order = model_order if model_order else MODELS
-    n = 2 + 2 * len(order)
+    n = 2 + sum(1 if m == "TCMNet" else 2 for m in order)
     return "| " + " | ".join(["---"] * n) + " |"
 
 
@@ -377,6 +397,12 @@ def _best_of(*cands):
     return min(valid, key=_rank_key)
 
 
+def _model_kinds(model_name: str):
+    if model_name == "TCMNet":
+        return [(0, "")]
+    return [(0, "raw"), (1, "tcg")]
+
+
 def merge_and_emit(existing: dict, disk: dict, model_order: list | None = None):
     """Produce (new_rows_by_dataset, change_log).
 
@@ -386,7 +412,8 @@ def merge_and_emit(existing: dict, disk: dict, model_order: list | None = None):
     new_rows = []
     changes = {"fill": [], "improve": [], "unchanged_empty": []}
     order = model_order if model_order else MODELS
-    n_cols = 2 * len(order)
+    # Compute total columns (TCMNet=1, others=2)
+    n_cols = sum(1 if m == "TCMNet" else 2 for m in order)
     for ds_name in _resolve_emit_datasets(existing):
         ds_md = MD_NAME.get(ds_name, ds_name)
         horizons = _horizons_of(ds_name)
@@ -394,10 +421,10 @@ def merge_and_emit(existing: dict, disk: dict, model_order: list | None = None):
         for h in horizons:
             old_by_key = existing.get(ds_name, {}).get(h, {})
             row = []
+            cell_idx = 0
             for i, model_name in enumerate(order):
                 ds_disk = disk.get(model_name, {}).get(ds_name, {}).get(h, {})
-                for offset, kind in ((0, "raw"), (1, "tcg")):
-                    cell_idx = 2 * i + offset
+                for offset, kind in _model_kinds(model_name):
                     old_str = old_by_key.get((model_name, kind), "")
                     old_v = _parse_cell(old_str)
                     new_v = ds_disk.get(kind)
@@ -406,16 +433,17 @@ def merge_and_emit(existing: dict, disk: dict, model_order: list | None = None):
                     row.append(best_str)
                     if best is not None:
                         avg_accumulator[cell_idx].append(best)
+                    cell_idx += 1
                     if old_v is None and best is not None:
                         changes["fill"].append(
-                            (ds_name, h, model_name, kind, "", best_str))
+                            (ds_name, h, model_name, kind or "best", "", best_str))
                     elif (best is not None and old_v is not None
                           and _rank_key(best) < _rank_key(old_v)):
                         changes["improve"].append(
-                            (ds_name, h, model_name, kind, _cell(old_v), best_str))
+                            (ds_name, h, model_name, kind or "best", _cell(old_v), best_str))
                     elif old_v is None and best is None:
                         changes["unchanged_empty"].append(
-                            (ds_name, h, model_name, kind))
+                            (ds_name, h, model_name, kind or "best"))
             new_rows.append(_fmt_row(ds_md, h, row))
         avg_cells = []
         for bucket in avg_accumulator:
@@ -460,7 +488,7 @@ def _print_summary(changes: dict):
 
 
 def _print_completeness_matrix(disk: dict, existing: dict):
-    print("\n== Completeness matrix (per dataset/horizon, R/T = raw/tcg available) ==")
+    print("\n== Completeness matrix (per dataset/horizon) ==")
     for ds_name in _resolve_emit_datasets(existing):
         print(f"\n-- {ds_name} --")
         print(f"{'horizon':>8}  " + " ".join(f"{m:<11s}" for m in MODELS))
@@ -469,11 +497,16 @@ def _print_completeness_matrix(disk: dict, existing: dict):
             old = existing.get(ds_name, {}).get(h, {})
             for model_name in MODELS:
                 ds_disk = disk.get(model_name, {}).get(ds_name, {}).get(h, {})
-                r_have = (_parse_cell(old.get((model_name, "raw"), "")) is not None
-                          or ds_disk.get("raw") is not None)
-                t_have = (_parse_cell(old.get((model_name, "tcg"), "")) is not None
-                          or ds_disk.get("tcg") is not None)
-                row.append(f"  {'R' if r_have else '-'}{'T' if t_have else '-'}       ")
+                if model_name == "TCMNet":
+                    have = (_parse_cell(old.get((model_name, ""), "")) is not None
+                            or ds_disk.get("") is not None)
+                    row.append(f"  {'Y' if have else '-'}         ")
+                else:
+                    r_have = (_parse_cell(old.get((model_name, "raw"), "")) is not None
+                              or ds_disk.get("raw") is not None)
+                    t_have = (_parse_cell(old.get((model_name, "tcg"), "")) is not None
+                              or ds_disk.get("tcg") is not None)
+                    row.append(f"  {'R' if r_have else '-'}{'T' if t_have else '-'}       ")
             print(" ".join(row))
 
 
