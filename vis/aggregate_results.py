@@ -13,7 +13,7 @@ Conventions enforced by this script (keep them in sync with run_baselines.py):
 * TCG  = ``cfg.json -> model_config.tcg.params`` has ``enabled=True``. When
         several hyperparameter configurations exist (orth_lambda / num_patterns
         / use_multiscale), the one with the lowest test MSE wins.
-* TCMNet, DLinear, iTransformer, Autoformer: one table column (no _raw / _tcg);
+* TCMNet, DLinear, iTransformer: one table column (no _raw / _tcg);
         the cell is the best MSE/MAE across all runs for that (model, dataset, horizon).
 
 The list of ``MODELS``/``DATASETS``/``DATASET_CONFIGS`` is imported directly
@@ -51,7 +51,7 @@ except Exception:
     RB_MODELS = [
         "Informer", "Crossformer", "PatchTST", "TimesNet",
         "TimeMixer", "TimeFilter", "WPMixer", "TCMNet",
-        "DLinear", "iTransformer", "Autoformer",
+        "DLinear", "iTransformer",
     ]
     RB_DATASETS = [
         ("ETTh1", 7), ("ETTh2", 7), ("ETTm1", 7), ("ETTm2", 7),
@@ -72,7 +72,7 @@ MD_NAME = {"Illness": "ILI"}
 
 # No TCG split: one table column, best MSE/MAE over all matching runs.
 SINGLE_COL_MODELS = frozenset(
-    {"TCMNet", "DLinear", "iTransformer", "Autoformer"}
+    {"TCMNet", "DLinear", "iTransformer"}
 )
 
 # Keep the *display* order of the table in sync with the model list so that
@@ -86,7 +86,6 @@ def _ckpt_subdir(model_name: str) -> str:
         "Informer",
         "Crossformer",
         "DLinear",
-        "Autoformer",
     ):
         return model_name
     # TCMNet checkpoints live under ``TCMNetForForecasting`` (``model.__name__``), same
@@ -265,7 +264,7 @@ def _parse_header_column_map(header_cells: list) -> dict:
 
     ``header_cells`` is the list BETWEEN the first two pipes of the header row,
     minus the first two (``dataset``, ``horizon``). Unknown columns are skipped.
-    TCMNet / DLinear / iTransformer / Autoformer use a single column name
+    TCMNet / DLinear / iTransformer use a single column name
     (no _raw / _tcg).
     """
     mapping = {}
