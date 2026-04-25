@@ -1,33 +1,37 @@
 #!/usr/bin/env python3
 """
-Sensitivity Analysis for RQ5: PatchTST on Illness dataset
+Sensitivity Analysis for RQ5: PatchTST + Crossformer on Illness dataset
 
-Two sensitivity curves:
+Three sensitivity curves:
   Curve 1: K=8 fixed, orth_lambda varies in {0, 0.0001, 0.001, 0.01, 0.1}
   Curve 2: orth_lambda=0.0001 fixed, K varies in {4, 8, 16, 32}
+  Curve 3: K=8 and orth_lambda=0.0001 fixed, conv kernels vary in
+           {(1,), (3,), (5,), (7,), (3, 7)}
 
 Outputs saved under checkpoints/test_sensitivity/{md5}/
 """
 import os
 import sys
 import time
+import argparse
 from multiprocessing import Process, Queue
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-SENSITIVITY_CKPT_SAVE_DIR = os.path.join(script_dir, "checkpoints", "test_sensitivity")
+SENSITIVITY_CKPT_SAVE_DIR = os.path.join(script_dir, "checkpoints", "test_sensitivity_conv")
 src_dir = os.path.join(script_dir, "src")
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
 from basicts.models.PatchTST import PatchTSTForForecasting, PatchTSTConfig
+from basicts.models.Crossformer import Crossformer, CrossformerConfig
 from basicts.configs import BasicTSForecastingConfig, TCGConfig
 from basicts.runners.callback import AddAuxiliaryLoss, EarlyStopping
 from basicts import BasicTSLauncher
 
 AVAILABLE_GPUS = [0, 1, 2, 3, 4, 5, 6, 7]
-JOBS_PER_GPU = 5
+JOBS_PER_GPU = 4
 
-MODEL_NAME = "PatchTST"
+MODEL_NAMES = ["PatchTST", "Crossformer"]
 DATASET_NAME = "Illness"
 NUM_FEATURES = 7
 INPUT_LEN = 24
@@ -35,8 +39,10 @@ OUTPUT_LENS = [24, 36, 48, 60]
 
 ORTH_LAMBDA_SENSITIVITY = [0.0, 0.0001, 0.001, 0.01, 0.1]
 K_SENSITIVITY = [4, 8, 16, 32]
+CONV_KERNEL_SENSITIVITY = [(1,), (3,), (5,), (7,), (3, 7)]
 K_FIXED = 8
 ORTH_LAMBDA_FIXED = 0.0001
+CONV_KERNELS_FIXED = (3, 7)
 
 USE_CLEAN_TARGETS = False
 
@@ -48,23 +54,63 @@ def _format_orth_lambda(x: float) -> str:
     return exp if "e" in exp.lower() else f"{x:g}"
 
 
-def get_model_config(input_len, output_len, num_features, tcg_num_patterns, tcg_orth_lambda):
-    cfg = PatchTSTConfig(
-        input_len=input_len,
-        output_len=output_len,
-        num_features=num_features,
-    )
+def _format_conv_kernels(conv_kernels: tuple[int, ...]) -> str:
+    return "+".join(str(k) for k in conv_kernels)
+
+
+def get_model_config(
+    model_name,
+    input_len,
+    output_len,
+    num_features,
+    tcg_num_patterns,
+    tcg_orth_lambda,
+    tcg_conv_kernels,
+):
+    if model_name == "PatchTST":
+        cfg = PatchTSTConfig(
+            input_len=input_len,
+            output_len=output_len,
+            num_features=num_features,
+        )
+        model_class = PatchTSTForForecasting
+    elif model_name == "Crossformer":
+        cfg = CrossformerConfig(
+            input_len=input_len,
+            output_len=output_len,
+            num_features=num_features,
+            patch_len=8,
+        )
+        model_class = Crossformer
+    else:
+        raise ValueError(f"Unsupported model: {model_name}")
+
     cfg.tcg = TCGConfig(
         enabled=True,
         num_patterns=int(tcg_num_patterns),
         orth_lambda=float(tcg_orth_lambda),
+        conv_kernels=tuple(int(k) for k in tcg_conv_kernels),
     )
-    return PatchTSTForForecasting, cfg, False
+    return model_class, cfg, False
 
 
-def run_experiment(input_len, output_len, gpu_id, tcg_num_patterns, tcg_orth_lambda):
+def run_experiment(
+    model_name,
+    input_len,
+    output_len,
+    gpu_id,
+    tcg_num_patterns,
+    tcg_orth_lambda,
+    tcg_conv_kernels,
+):
     model_class, model_config, use_timestamps = get_model_config(
-        input_len, output_len, NUM_FEATURES, tcg_num_patterns, tcg_orth_lambda
+        model_name,
+        input_len,
+        output_len,
+        NUM_FEATURES,
+        tcg_num_patterns,
+        tcg_orth_lambda,
+        tcg_conv_kernels,
     )
 
     callbacks = [EarlyStopping(patience=10)]
@@ -97,25 +143,30 @@ def run_experiment(input_len, output_len, gpu_id, tcg_num_patterns, tcg_orth_lam
 
 def worker(
     gpu_queue,
+    model_name,
     input_len,
     output_len,
     tcg_num_patterns,
     tcg_orth_lambda,
+    tcg_conv_kernels,
 ):
     gpu_id = None
     task_id = (
-        f"{MODEL_NAME} | {DATASET_NAME} | {input_len}->{output_len} | "
-        f"K={tcg_num_patterns} orth={_format_orth_lambda(tcg_orth_lambda)}"
+        f"{model_name} | {DATASET_NAME} | {input_len}->{output_len} | "
+        f"K={tcg_num_patterns} orth={_format_orth_lambda(tcg_orth_lambda)} "
+        f"conv={_format_conv_kernels(tcg_conv_kernels)}"
     )
     try:
         gpu_id = gpu_queue.get()
         print(f"[Start] {task_id} on GPU {gpu_id}")
         run_experiment(
+            model_name,
             input_len,
             output_len,
             str(gpu_id),
             tcg_num_patterns,
             tcg_orth_lambda,
+            tcg_conv_kernels,
         )
     except Exception as e:
         print(f"[Error] {task_id} failed: {e}")
@@ -128,6 +179,14 @@ def worker(
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run RQ5 sensitivity experiments")
+    parser.add_argument(
+        "--only-conv",
+        action="store_true",
+        help="Run only Curve 3 (conv kernel sensitivity)",
+    )
+    args = parser.parse_args()
+
     gpu_queue = Queue()
     for gid in AVAILABLE_GPUS:
         for _ in range(JOBS_PER_GPU):
@@ -135,7 +194,7 @@ if __name__ == "__main__":
 
     processes = []
     print(f"=== Sensitivity Analysis ===")
-    print(f"Model: {MODEL_NAME}, Dataset: {DATASET_NAME}")
+    print(f"Models: {MODEL_NAMES}, Dataset: {DATASET_NAME}")
     print(f"GPU: {AVAILABLE_GPUS}, Concurrent: {len(AVAILABLE_GPUS) * JOBS_PER_GPU}")
     print()
     print(f"Curve 1: K={K_FIXED} fixed, orth_lambda varies:")
@@ -144,44 +203,76 @@ if __name__ == "__main__":
     print(f"Curve 2: orth_lambda={ORTH_LAMBDA_FIXED} fixed, K varies:")
     print(f"  K: {K_SENSITIVITY}")
     print()
+    print(f"Curve 3: K={K_FIXED}, orth_lambda={ORTH_LAMBDA_FIXED} fixed, conv kernels vary:")
+    print(f"  conv_kernels: {CONV_KERNEL_SENSITIVITY}")
+    print()
 
     total = 0
 
-    for output_len in OUTPUT_LENS:
-        for orth_lambda in ORTH_LAMBDA_SENSITIVITY:
-            p = Process(
-                target=worker,
-                args=(
-                    gpu_queue,
-                    INPUT_LEN,
-                    output_len,
-                    K_FIXED,
-                    orth_lambda,
-                ),
-            )
-            p.start()
-            processes.append(p)
-            time.sleep(0.1)
-            total += 1
+    if not args.only_conv:
+        for model_name in MODEL_NAMES:
+            for output_len in OUTPUT_LENS:
+                for orth_lambda in ORTH_LAMBDA_SENSITIVITY:
+                    p = Process(
+                        target=worker,
+                        args=(
+                            gpu_queue,
+                            model_name,
+                            INPUT_LEN,
+                            output_len,
+                            K_FIXED,
+                            orth_lambda,
+                            CONV_KERNELS_FIXED,
+                        ),
+                    )
+                    p.start()
+                    processes.append(p)
+                    time.sleep(0.1)
+                    total += 1
 
-    for output_len in OUTPUT_LENS:
-        for k in K_SENSITIVITY:
-            if k == K_FIXED:
-                continue
-            p = Process(
-                target=worker,
-                args=(
-                    gpu_queue,
-                    INPUT_LEN,
-                    output_len,
-                    k,
-                    ORTH_LAMBDA_FIXED,
-                ),
-            )
-            p.start()
-            processes.append(p)
-            time.sleep(0.1)
-            total += 1
+        for model_name in MODEL_NAMES:
+            for output_len in OUTPUT_LENS:
+                for k in K_SENSITIVITY:
+                    if k == K_FIXED:
+                        continue
+                    p = Process(
+                        target=worker,
+                        args=(
+                            gpu_queue,
+                            model_name,
+                            INPUT_LEN,
+                            output_len,
+                            k,
+                            ORTH_LAMBDA_FIXED,
+                            CONV_KERNELS_FIXED,
+                        ),
+                    )
+                    p.start()
+                    processes.append(p)
+                    time.sleep(0.1)
+                    total += 1
+
+    for model_name in MODEL_NAMES:
+        for output_len in OUTPUT_LENS:
+            for conv_kernels in CONV_KERNEL_SENSITIVITY:
+                if conv_kernels == CONV_KERNELS_FIXED:
+                    continue
+                p = Process(
+                    target=worker,
+                    args=(
+                        gpu_queue,
+                        model_name,
+                        INPUT_LEN,
+                        output_len,
+                        K_FIXED,
+                        ORTH_LAMBDA_FIXED,
+                        conv_kernels,
+                    ),
+                )
+                p.start()
+                processes.append(p)
+                time.sleep(0.1)
+                total += 1
 
     print(f"Scheduled {total} experiments")
     print(f"Checkpoints saved to: {SENSITIVITY_CKPT_SAVE_DIR}")

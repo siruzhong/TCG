@@ -22,6 +22,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import seaborn as sns
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(script_dir, "src")
@@ -60,89 +61,118 @@ def aggregate_routing_to_timestep(routing, input_len, patch_len=16, stride=8, me
         timestep_routing = timestep_routing / (total_weight + 1e-6)
     return timestep_routing
 
-
 def visualize_routing_interpretability(
     raw_input,
     routing_probs,
     save_path,
-    figsize=(10.5, 2.6),
+    figsize=(14.5, 3.5),
     num_patterns=8,
     enhance_contrast=True,
 ):
+    import pandas as pd 
+
     l = raw_input.shape[0]
     k = routing_probs.shape[0]
     time_steps = np.arange(l)
     dominant_pattern = np.argmax(routing_probs, axis=0)
 
-    import matplotlib.pyplot as plt
     plt.rcParams.update({
-        "font.family": "DejaVu Sans",
-        "font.size": 8,
-        "axes.labelsize": 8,
-        "xtick.labelsize": 7,
-        "ytick.labelsize": 7,
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+        "font.size": 11,
+        "axes.labelsize": 11,
+        "axes.titlesize": 12,
+        "axes.titleweight": "bold",
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
         "figure.dpi": 300,
         "axes.facecolor": "white",
         "figure.facecolor": "white",
+        "axes.linewidth": 1.2,    # 加粗外边框
     })
 
+    # 【关键修改3】增加 wspace 解决标题重叠，调整 width_ratios 给热力图留足空间
     fig, axes = plt.subplots(
-        1,
-        3,
+        1, 3,
         figsize=figsize,
-        width_ratios=[2.9, 1.15, 2.95],
-        gridspec_kw={"wspace": 0.15},
+        width_ratios=[1.0, 1.0, 1.25], 
+        gridspec_kw={"wspace": 0.35},
     )
 
-    ax = axes[0]
-    ax.plot(time_steps, raw_input, color="#334155", linewidth=1.0)
-    ax.fill_between(time_steps, raw_input, np.min(raw_input), color="#DBEAFE", alpha=0.25)
-    ax.set_xlim(0, l - 1)
-    ax.set_xticks(np.arange(0, l, max(1, l // 4)))
-    ax.set_xticklabels(np.arange(0, l, max(1, l // 4)))
-    ax.set_xlabel("Time Steps", fontsize=8)
-    ax.set_ylabel("Input", fontsize=8)
-    ax.set_title("(a) Input Time Series", fontsize=8, pad=4)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.grid(axis="y", color="#D7E3F4", linewidth=0.45, alpha=0.6)
-    ax.tick_params(direction="in", length=1.5)
-
-    ax = axes[1]
-    import matplotlib.colors as mcolors
-    base_dom_palette = [
-        "#CFE8FF", "#D9CCFF", "#FFDCC5", "#CDEFD9", "#FFE3F0",
-        "#D5F4F7", "#FBE7C3", "#E1E8F0", "#E8DFF5", "#D8F3DC",
+    premium_dom_palette = [
+        "#FAD2CD", "#CDEAF3", "#BDE4DE", "#E2E6F2", 
+        "#FCECE5", "#CED6E5", "#E3F4F1", "#FCE4C5"
     ]
-    dom_palette = [base_dom_palette[i % len(base_dom_palette)] for i in range(num_patterns)]
-    dom_cmap = mcolors.ListedColormap(dom_palette)
-    ax.imshow(
-        dominant_pattern[np.newaxis, :],
-        aspect="auto",
-        cmap=dom_cmap,
-        vmin=-0.5,
-        vmax=num_patterns - 0.5,
-        interpolation="nearest",
-        extent=[0, l - 1, 0, 1],
-    )
 
-    switch_points = np.where(np.diff(dominant_pattern) != 0)[0] + 1
-    for sp in switch_points:
-        ax.axvline(sp, color="#64748B", linewidth=0.6, alpha=0.6, linestyle=(0, (2, 2)))
+    changes = np.where(np.diff(dominant_pattern) != 0)[0] + 1
+    boundaries = [0] + list(changes) + [l - 1]
 
+    def draw_regime_background(ax):
+        for i in range(len(boundaries) - 1):
+            start_idx = boundaries[i]
+            end_idx = boundaries[i+1]
+            regime = dominant_pattern[start_idx]
+            bg_color = premium_dom_palette[regime % len(premium_dom_palette)]
+
+            ax.axvspan(start_idx, end_idx, facecolor=bg_color, alpha=0.35, zorder=1, edgecolor="none")
+
+            if start_idx > 0:
+                ax.axvline(start_idx, color="#9CA3AF", linewidth=1.2, alpha=0.8, linestyle=(0, (3, 3)), zorder=2)
+
+    # ==========================================
+    # (a) The "What": Input Time Series & Regimes
+    # ==========================================
+    ax = axes[0]
+    draw_regime_background(ax)
+    
+    ax.plot(time_steps, raw_input, color="#111827", linewidth=1.8, zorder=3)
+    
     ax.set_xlim(0, l - 1)
+    y_min, y_max = raw_input.min(), raw_input.max()
+    ax.set_ylim(y_min - (y_max-y_min)*0.05, y_max + (y_max-y_min)*0.05)
+    
     ax.set_xticks(np.arange(0, l, max(1, l // 4)))
     ax.set_xticklabels(np.arange(0, l, max(1, l // 4)))
-    ax.set_yticks([])
-    ax.set_xlabel("Time Steps", fontsize=8)
-    ax.set_ylabel("Pattern", fontsize=8)
-    ax.set_title("(b) Dominant Pattern", fontsize=8, pad=4)
+    ax.set_xlabel("Time Steps")
+    ax.set_ylabel("Input Signal")
+    ax.set_title("(a) Input Signal & Regimes", pad=12)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.tick_params(direction="in", length=1.5)
+    ax.tick_params(direction="in", length=4, width=1.0, colors="#374151")
 
+    # ==========================================
+    # (b) The "Why": Rolling Volatility & Regimes
+    # ==========================================
+    ax = axes[1]
+    draw_regime_background(ax)
+    
+    rolling_std = pd.Series(raw_input).rolling(window=16, min_periods=1, center=True).std().fillna(method='bfill').values
+    
+    vol_color = "#DC2626"
+    ax.plot(time_steps, rolling_std, color=vol_color, linewidth=1.8, zorder=3)
+    ax.fill_between(time_steps, rolling_std, 0, color=vol_color, alpha=0.08, zorder=2) 
+    
+    ax.set_xlim(0, l - 1)
+    ax.set_ylim(0, rolling_std.max() * 1.15)
+    
+    ax.set_xticks(np.arange(0, l, max(1, l // 4)))
+    ax.set_xticklabels(np.arange(0, l, max(1, l // 4)))
+    ax.set_xlabel("Time Steps")
+    ax.set_ylabel("Local Volatility (Std)")
+    ax.set_title("(b) Regime Driver (Volatility)", pad=12)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.tick_params(direction="in", length=4, width=1.0, colors="#374151")
+
+    # ==========================================
+    # (c) The "How": Routing Probabilities
+    # ==========================================
     ax = axes[2]
-    cmap_heat = plt.cm.Blues
+    
+    cmap_heat = mcolors.LinearSegmentedColormap.from_list(
+        "CustomDeepBlue", ["#FAFAFA", "#D2E0F0", "#7DA7D9", "#245B9D", "#0A254D"]
+    )
+    
     if enhance_contrast:
         rp_min = float(np.percentile(routing_probs, 2))
         rp_max = float(np.percentile(routing_probs, 98))
@@ -157,27 +187,32 @@ def visualize_routing_interpretability(
         show_routing = routing_probs
 
     im = ax.imshow(show_routing, aspect="auto", cmap=cmap_heat, vmin=rp_min, vmax=rp_max)
-    ax.set_xlabel("Time Steps", fontsize=8)
-    ax.set_xticks(np.arange(0, l, max(1, l // 5)))
-    ax.set_xticklabels(np.arange(0, l, max(1, l // 5)))
-    ax.set_yticks(np.arange(0, k, 2))
-    ax.set_ylabel("Pattern ID", fontsize=8)
-    ax.set_title("(c) Routing Probabilities", fontsize=8, pad=4)
+    
+    ax.set_xlabel("Time Steps")
+    ax.set_xticks(np.arange(0, l, max(1, l // 4)))
+    ax.set_xticklabels(np.arange(0, l, max(1, l // 4)))
+    ax.set_yticks(np.arange(0, k, max(1, k // 4)))
+    ax.set_ylabel("Latent Basis ID")
+    ax.set_title("(c) Routing Probabilities", pad=12)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.tick_params(direction="in", length=1.5)
+    ax.tick_params(direction="in", length=4, width=1.0, colors="#374151")
 
-    cbar = plt.colorbar(im, ax=ax, fraction=0.025, pad=0.02, aspect=15)
+    # Colorbar排版优化
+    cbar = plt.colorbar(im, ax=ax, fraction=0.035, pad=0.04, aspect=20)
+    cbar.outline.set_linewidth(0.8)
+    cbar.outline.set_edgecolor('#9CA3AF')
     cbar_label = r"$\pi_k$"
     if enhance_contrast:
-        cbar_label += " (contrast stretched)"
-    cbar.set_label(cbar_label, fontsize=8)
-    cbar.ax.tick_params(labelsize=6)
+        cbar_label += " (Stretched)"
+    cbar.set_label(cbar_label, fontsize=11, labelpad=6)
+    cbar.ax.tick_params(labelsize=9, length=3, width=0.8, direction="out")
 
-    plt.savefig(f"{save_path}.pdf", dpi=300, bbox_inches="tight", pad_inches=0.05)
+    # 【关键修改5】确保保存时使用白底，去掉外层可能存在的黑框
+    plt.tight_layout()
+    plt.savefig(f"{save_path}.pdf", dpi=300, bbox_inches="tight", pad_inches=0.05, facecolor='white', edgecolor='none')
     plt.close()
     print(f"Saved: {save_path}.pdf")
-
 
 def select_best_sample(routing_timestep, time_series_batch, num_features=1):
     b, n, l, k = routing_timestep.shape
@@ -257,10 +292,10 @@ def main():
     parser.add_argument("--output_len", type=int, default=None)
     parser.add_argument("--samples", type=int, default=8,
                         help="Number of samples to visualize")
-    parser.add_argument("--fig_w", type=float, default=10.5,
-                        help="Figure width in inches")
-    parser.add_argument("--fig_h", type=float, default=2.6,
-                        help="Figure height in inches")
+    parser.add_argument("--fig_w", type=float, default=11.4,
+                        help="Figure width in inches (3 columns ≈ 3/4 of 15.2 inch row)")
+    parser.add_argument("--fig_h", type=float, default=3.2,
+                        help="Figure height in inches (match parameter_sensitivity row height)")
     args = parser.parse_args()
 
     dataset_cfg = DATASET_CONFIG[args.dataset]
@@ -358,11 +393,9 @@ def main():
     K = args.k
     P = routing_flat.shape[1]
 
-    # routing_flat: (B_total * N, P, K) if single TCG
-    # Infer N_actual from data
     N_actual = routing_flat.shape[0] // (B_total * P)
     if N_actual * B_total * P != routing_flat.shape[0]:
-        N_actual = N  # fallback to dataset num_features
+        N_actual = N  
     routing_reshaped = routing_flat.reshape(B_total, N_actual, P, K)
 
     routing_timestep = aggregate_routing_to_timestep(

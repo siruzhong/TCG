@@ -13,7 +13,6 @@ src_dir = os.path.join(script_dir, "src")
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
-from basicts.models.Autoformer import Autoformer, AutoformerConfig
 from basicts.models.Crossformer import Crossformer, CrossformerConfig
 from basicts.models.DLinear import DLinear, DLinearConfig
 from basicts.models.Informer import Informer, InformerConfig
@@ -27,13 +26,12 @@ from basicts.configs import BasicTSForecastingConfig
 from basicts.runners.callback import EarlyStopping
 from basicts import BasicTSLauncher
 
-AVAILABLE_GPUS = [0, 1, 4, 5, 6, 7]
+AVAILABLE_GPUS = [0, 1, 2, 3, 4, 5, 6, 7]
 JOBS_PER_GPU = 2
 
 MODELS = [
     "iTransformer",
     "DLinear",
-    "Autoformer",
     "WPMixer",
 ]
 
@@ -126,16 +124,6 @@ def get_model_config(model_name, input_len, output_len, num_features, dataset_na
             individual=False,
         )
         return DLinear, cfg, False
-    elif model_name == "Autoformer":
-        cfg = AutoformerConfig(
-            input_len=input_len,
-            output_len=output_len,
-            label_len=output_len // 2,
-            num_features=num_features,
-            use_timestamps=True,
-            timestamp_sizes=get_timestamp_sizes(dataset_name),
-        )
-        return Autoformer, cfg, True
     elif model_name == "iTransformer":
         cfg = iTransformerConfig(
             input_len=input_len, output_len=output_len, num_features=num_features
