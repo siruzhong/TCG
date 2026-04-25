@@ -13,6 +13,8 @@ Conventions enforced by this script (keep them in sync with run_baselines.py):
 * TCG  = ``cfg.json -> model_config.tcg.params`` has ``enabled=True``. When
         several hyperparameter configurations exist (orth_lambda / num_patterns
         / use_multiscale), the one with the lowest test MSE wins.
+* TCMNet, DLinear, iTransformer, Autoformer: one table column (no _raw / _tcg);
+        the cell is the best MSE/MAE across all runs for that (model, dataset, horizon).
 
 The list of ``MODELS``/``DATASETS``/``DATASET_CONFIGS`` is imported directly
 from ``run_baselines.py`` so adding a new model or dataset there also extends
@@ -46,8 +48,11 @@ try:
     )
 except Exception:
     # Fallback: mirror the declarations in run_baselines.py. Keep in sync.
-    RB_MODELS = ["Informer", "Crossformer", "PatchTST", "TimesNet",
-                 "TimeMixer", "TimeFilter", "WPMixer"]
+    RB_MODELS = [
+        "Informer", "Crossformer", "PatchTST", "TimesNet",
+        "TimeMixer", "TimeFilter", "WPMixer", "TCMNet",
+        "DLinear", "iTransformer", "Autoformer",
+    ]
     RB_DATASETS = [
         ("ETTh1", 7), ("ETTh2", 7), ("ETTm1", 7), ("ETTm2", 7),
         ("Weather", 21), ("Illness", 7), ("ExchangeRate", 8),
@@ -65,16 +70,27 @@ except Exception:
 # Display name used in the markdown table (differs from run_baselines name).
 MD_NAME = {"Illness": "ILI"}
 
+# No TCG split: one table column, best MSE/MAE over all matching runs.
+SINGLE_COL_MODELS = frozenset(
+    {"TCMNet", "DLinear", "iTransformer", "Autoformer"}
+)
 
 # Keep the *display* order of the table in sync with the model list so that
-# new models appear at the end. Each model contributes two columns (_raw / _tcg),
-# except TCMNet which only has one column (it is a standalone model without raw/tcg).
+# new models appear at the end. Most models get two columns (_raw / _tcg).
+# See SINGLE_COL_MODELS: one column (plain model name) with best result only.
 # The checkpoint directory name sometimes differs from the logical model name;
 # that mapping is handled by _ckpt_subdir.
 def _ckpt_subdir(model_name: str) -> str:
     """Map logical model name to the checkpoints/<...> folder name."""
-    if model_name in ("Informer", "Crossformer"):
+    if model_name in (
+        "Informer",
+        "Crossformer",
+        "DLinear",
+        "Autoformer",
+    ):
         return model_name
+    # TCMNet checkpoints live under ``TCMNetForForecasting`` (``model.__name__``), same
+    # pattern as PatchTST / TimesNet / iTransformer, not a bare ``TCMNet`` folder.
     return f"{model_name}ForForecasting"
 
 
@@ -178,10 +194,11 @@ def _input_len_of(ds_name: str) -> int:
 
 
 def collect_disk() -> dict:
-    """disk[model][dataset][horizon] = {"raw": {MSE,MAE}|None, "tcg": {...}|None}.
+    """disk[model][dataset][horizon] = {"raw" / "tcg" / "": best metrics}.
 
-    For TCMNet (standalone model without raw/tcg distinction), the best result
-    across all hyperparameters is stored under key "" (empty string).
+    For models in SINGLE_COL_MODELS, the best MSE/MAE over all completed runs
+    (ignoring raw vs tcg) is stored under key "".
+    All other models: split raw vs tcg as usual.
     """
     disk = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
     for model_name in MODELS:
@@ -193,7 +210,7 @@ def collect_disk() -> dict:
             for h in _horizons_of(ds_name):
                 pattern = os.path.join(base, f"{ds_name}_*_{il}_{h}", "*")
                 raw_best, tcg_best = None, None
-                tcmnet_best = None
+                single_best = None
                 for run_dir in glob.glob(pattern):
                     cfg_path = os.path.join(run_dir, "cfg.json")
                     if not os.path.exists(cfg_path):
@@ -205,17 +222,17 @@ def collect_disk() -> dict:
                     m = _read_metrics(run_dir)
                     if m is None:
                         continue
-                    if model_name == "TCMNet":
-                        if tcmnet_best is None or m["MSE"] < tcmnet_best["MSE"]:
-                            tcmnet_best = m
+                    if model_name in SINGLE_COL_MODELS:
+                        if single_best is None or m["MSE"] < single_best["MSE"]:
+                            single_best = m
                     elif _is_tcg_enabled(cfg):
                         if tcg_best is None or m["MSE"] < tcg_best["MSE"]:
                             tcg_best = m
                     else:
                         if raw_best is None or m["MSE"] < raw_best["MSE"]:
                             raw_best = m
-                if model_name == "TCMNet":
-                    disk[model_name][ds_name][h] = {"": tcmnet_best}
+                if model_name in SINGLE_COL_MODELS:
+                    disk[model_name][ds_name][h] = {"": single_best}
                 else:
                     disk[model_name][ds_name][h] = {
                         "raw": raw_best, "tcg": tcg_best,
@@ -248,13 +265,14 @@ def _parse_header_column_map(header_cells: list) -> dict:
 
     ``header_cells`` is the list BETWEEN the first two pipes of the header row,
     minus the first two (``dataset``, ``horizon``). Unknown columns are skipped.
-    TCMNet has a single column (no _raw/_tcg suffix).
+    TCMNet / DLinear / iTransformer / Autoformer use a single column name
+    (no _raw / _tcg).
     """
     mapping = {}
     for i, name in enumerate(header_cells):
         s = name.strip()
-        if s == "TCMNet":
-            mapping[i] = ("TCMNet", "")
+        if s in SINGLE_COL_MODELS:
+            mapping[i] = (s, "")
             continue
         m = re.match(r"^(\w+)_(raw|tcg)$", s)
         if not m:
@@ -356,7 +374,7 @@ def _header_row(model_order: list | None = None) -> str:
     order = model_order if model_order else MODELS
     cells = ["dataset", "horizon"]
     for m in order:
-        if m == "TCMNet":
+        if m in SINGLE_COL_MODELS:
             cells.append(m)
         else:
             cells.append(f"{m}_raw")
@@ -366,7 +384,7 @@ def _header_row(model_order: list | None = None) -> str:
 
 def _separator_row(model_order: list | None = None) -> str:
     order = model_order if model_order else MODELS
-    n = 2 + sum(1 if m == "TCMNet" else 2 for m in order)
+    n = 2 + sum(1 if m in SINGLE_COL_MODELS else 2 for m in order)
     return "| " + " | ".join(["---"] * n) + " |"
 
 
@@ -398,7 +416,7 @@ def _best_of(*cands):
 
 
 def _model_kinds(model_name: str):
-    if model_name == "TCMNet":
+    if model_name in SINGLE_COL_MODELS:
         return [(0, "")]
     return [(0, "raw"), (1, "tcg")]
 
@@ -412,8 +430,7 @@ def merge_and_emit(existing: dict, disk: dict, model_order: list | None = None):
     new_rows = []
     changes = {"fill": [], "improve": [], "unchanged_empty": []}
     order = model_order if model_order else MODELS
-    # Compute total columns (TCMNet=1, others=2)
-    n_cols = sum(1 if m == "TCMNet" else 2 for m in order)
+    n_cols = sum(1 if m in SINGLE_COL_MODELS else 2 for m in order)
     for ds_name in _resolve_emit_datasets(existing):
         ds_md = MD_NAME.get(ds_name, ds_name)
         horizons = _horizons_of(ds_name)
@@ -497,7 +514,7 @@ def _print_completeness_matrix(disk: dict, existing: dict):
             old = existing.get(ds_name, {}).get(h, {})
             for model_name in MODELS:
                 ds_disk = disk.get(model_name, {}).get(ds_name, {}).get(h, {})
-                if model_name == "TCMNet":
+                if model_name in SINGLE_COL_MODELS:
                     have = (_parse_cell(old.get((model_name, ""), "")) is not None
                             or ds_disk.get("") is not None)
                     row.append(f"  {'Y' if have else '-'}         ")
