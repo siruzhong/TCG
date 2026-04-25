@@ -3,7 +3,7 @@ import matplotlib.patheffects as pe
 from matplotlib.lines import Line2D
 
 # ==========================================
-# 1. 配置全局学术字体和样式
+# 1. Global matplotlib style
 # ==========================================
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = ["Times New Roman"]
@@ -13,9 +13,9 @@ plt.rcParams["ytick.labelsize"] = 10
 plt.rcParams["legend.fontsize"] = 9
 
 # ==========================================
-# 2. 数据：同一行三列 = 三个数据集
-# 每个子图内 = 同数据集下三个模型 (颜色区分) × 变体 (标记/箭头)
-# 格式: (Params_in_Millions, MSE) — 参数量可跨数据集复用，只换 MSE
+# 2. Data: one row, three columns = three datasets.
+#    Within each panel: three models (color) × variants (marker / arrows).
+#    Tuple: (params in millions, MSE). Params are shared; only MSE varies by dataset.
 # ==========================================
 _MODEL_VARIANT_PARAMS = {
     "PatchTST": {
@@ -41,7 +41,7 @@ _MODEL_VARIANT_PARAMS = {
     },
 }
 
-# 仅 MSE 随数据集变化（替换为你的实验结果）
+# Replace MSE numbers with your experiment results (per dataset).
 _MSE = {
     "ETTh1": {
         "PatchTST": {
@@ -117,7 +117,7 @@ _MSE = {
 dataset_order = list(_MSE.keys())
 model_order = list(_MODEL_VARIANT_PARAMS.keys())
 
-# 组装: data[dataset][model][variant] = (p, mse)
+# data[dataset][model][variant] = (params_M, mse)
 def _build_data() -> dict:
     out: dict = {}
     for d in dataset_order:
@@ -135,20 +135,20 @@ def _build_data() -> dict:
 
 data = _build_data()
 
-# 颜色和标记：颜色=模型，标记=变体
+# Color = model, marker = variant
 colors = {"PatchTST": "#1f77b4", "iTransformer": "#2ca02c", "DLinear": "#d62728"}
 markers = {"Raw": "o", "2xW": "^", "2xD": "v", "2xB": "s", "+TCM": "*"}
 sizes = {"Raw": 50, "2xW": 50, "2xD": 50, "2xB": 50, "+TCM": 160}
 
-# 数据点旁标注「模型 (变体)」；子图多时可关
+# Text labels "Model (variant)" next to points; set False if panels get crowded
 POINT_LABELS = True
 POINT_LABEL_FONTSIZE = 4.8
 
-# 子图内双图例：左 Model、右 Variant，避免与底部整图图例抢空间
+# Two in-panel legends: Model (left), Variant (right)
 LEGEND_FRAMEALPHA = 0.92
 LEGEND_FONTSIZE_MODEL = 7.0
 LEGEND_FONTSIZE_VARIANT = 6.0
-VARIANT_LEGEND_NCOL = 1  # 想更扁可改为 2
+VARIANT_LEGEND_NCOL = 1  # use 2 for a flatter legend
 
 model_legend_handles = [
     Line2D(
@@ -189,11 +189,11 @@ variant_legend_handles = [
     ),
 ]
 
-# 宽整行、一行三数据集。各数据集 MSE 量级常不一致：默认不共享 y，便于每列自洽；
-# 若你做了归一化或量级接近，可设 True 以横向对比绝对 MSE
+# MSE scales often differ across datasets: default independent y-axes per column.
+# Set True if MSE is normalized or comparable across columns.
 SHARE_Y = False
 
-# 加宽整图，使三列子图每格更宽（可按版心再调 FIG_W）
+# Figure width (adjust for page / column width)
 FIG_W, FIG_H = 14.0, 3.4
 fig, axes = plt.subplots(
     1,
@@ -205,7 +205,7 @@ fig, axes = plt.subplots(
 )
 
 # ==========================================
-# 3. 每列一数据集，列内三模型
+# 3. One dataset per column; all three models in each
 # ==========================================
 for ax, dname in zip(axes, dataset_order):
     for model in model_order:

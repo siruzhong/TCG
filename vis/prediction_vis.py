@@ -9,68 +9,71 @@ import argparse
 # ==========================================
 # TCG Visualization Script
 # ==========================================
-# 用于可视化 TCG 模型的预测效果
+# Visualize TCG model forecasts vs ground truth (and RAW vs TCG comparisons).
 #
-# 推荐数据集/模型组合（基于 tcg_result.md 分析）：
-#   1. TimesNet + Illness (ILI) - 季节性模式明显，提升26.8%
-#   2. TimeMixer + Weather - 稳定提升8-9%，多特征便于展示
-#   3. Informer + ETTm2/ETTh2 - 巨大提升(48-61%)但波动较大
+# Example dataset / model pairs (see tcg_result.md):
+#   1. TimesNet + Illness — strong seasonality, large gains
+#   2. TimeMixer + Weather — stable gains, many features for plots
+#   3. Informer + ETTm2 / ETTh2 — large gains but noisier series
 #
-# 示例用法：
-#   # 对比模式：RAW vs TCG（随机筛选 >30% 提升的样本）
+# Examples:
+#   # Comparison: RAW vs TCG (random samples with >30% improvement)
 #   python prediction_vis.py \
 #     --before ../checkpoints_old/Informer/ExchangeRate_100_96_96/1814d14edc8c6ef91fb05b73b0b47a82 \
 #     --after ../checkpoints_old/Informer/ExchangeRate_100_96_96/a6a6366d9c46c0535fd10bfe825b747b \
 #     --feat 0 --threshold 30
 #
-#   # 对比模式：指定样本（固定样本 1036 757 1041 711）
+#   # Comparison: fixed sample indices
 #   python prediction_vis.py \
 #     --before ../checkpoints_old/Informer/ExchangeRate_100_96_96/1814d14edc8c6ef91fb05b73b0b47a82 \
 #     --after ../checkpoints_old/Informer/ExchangeRate_100_96_96/a6a6366d9c46c0535fd10bfe825b747b \
 #     --feat 0 --indices 1010 1210 1041 711
 #
-#   # 单模型模式：可视化 TCG 预测 vs 真值
+#   # Single run: TCG predictions vs targets
 #   python prediction_vis.py --tcg ../checkpoints/TimesNetForForecasting/ETTm1_100_96_720/xxx
 #
 # ==========================================
-# 1. 学术风格全局配置
+# 1. Global plot style (matches run_rq4_visualization.py)
 # ==========================================
 def set_academic_style():
-    """设置ICML学术风格（统一格式）"""
+    """Font family and sizes aligned with run_rq4_visualization.py."""
     sns.set_theme(style="whitegrid", font_scale=1.0, rc={
-        "font.family": "serif",
-        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+        "font.size": 11,
+        "axes.labelsize": 11,
+        "axes.titlesize": 12,
+        "axes.titleweight": "bold",
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+        "legend.title_fontsize": 11,
+        "figure.titlesize": 12,
         "axes.edgecolor": ".15",
         "grid.linestyle": "--",
         "axes.linewidth": 1.2,
-        "font.size": 10,
-        "axes.labelsize": 11,
-        "axes.titlesize": 12,
-        "xtick.labelsize": 10,
-        "ytick.labelsize": 10,
-        "legend.fontsize": 8.5,
-        "legend.title_fontsize": 10,
         "figure.dpi": 300,
-        "savefig.bbox": "tight"
+        "axes.facecolor": "white",
+        "figure.facecolor": "white",
+        "savefig.bbox": "tight",
     })
 
 
 def subplot_legend_kw(ncol=1, loc="upper left"):
-    """子图图例：单列竖排，风格与 parameter_sensitivity_analysis.py 一致。"""
+    """Legend kwargs for subplots; font size comes from rcParams['legend.fontsize']."""
     return {
         "loc": loc,
         "ncol": ncol,
         "framealpha": 0.9,
         "edgecolor": "gray",
-        "fontsize": 8.5,
     }
 
 
 # ==========================================
-# 2. 数据加载逻辑
+# 2. Load saved test tensors
 # ==========================================
 def load_test_results(result_dir):
-    """加载测试结果数据"""
+    """Load inputs, prediction, and targets from a checkpoint result folder."""
     result_dir = Path(result_dir)
     test_results_dir = result_dir / "test_results"
     
@@ -97,8 +100,8 @@ def load_test_results(result_dir):
         path = test_results_dir / f"{name}.npy"
         try:
             data = np.load(path)
-            # 确保形状正确 (B, L, C)
-            if len(data.shape) == 2: # 某些情况可能是平铺的
+            # Ensure shape (B, L, C)
+            if len(data.shape) == 2:  # Some exports are flattened
                 L = input_len if name == "inputs" else output_len
                 B = len(data) // (L * num_features)
                 data = data.reshape(B, L, num_features)
@@ -119,24 +122,24 @@ def load_test_results(result_dir):
     }
 
 # ==========================================
-# 3. 核心绘图函数：TCG 预测可视化
+# 3. Plot TCG predictions
 # ==========================================
 def plot_tcg_predictions(tc_dir, output_path, feat_idx=0, num_samples=4, 
                         selection='high_error', show_error_band=True):
     """
-    可视化 TCG 模型的预测效果
-    
-    参数:
-        tc_dir: TCG checkpoint 目录
-        output_path: 输出路径
-        feat_idx: 要可视化的特征索引
-        num_samples: 展示的样本数量
-        selection: 样本选择策略
-            - 'high_error': 选择误差最大的样本
-            - 'low_error': 选择误差最小的样本
-            - 'random': 随机选择
-            - 'diverse': 选择误差分散的样本
-        show_error_band: 是否显示预测误差带
+    Plot TCG forecasts for selected test samples.
+
+    Args:
+        tc_dir: Checkpoint directory with test_results/*.npy
+        output_path: Directory for PDF output
+        feat_idx: Feature channel index
+        num_samples: Number of samples to show
+        selection: How to pick samples:
+            - 'high_error': highest per-sample MAE
+            - 'low_error': lowest MAE
+            - 'random': random
+            - 'diverse': spread across low / mid / high MAE
+        show_error_band: If True, shade |y - y_hat| around the prediction
     """
     set_academic_style()
     
@@ -147,10 +150,8 @@ def plot_tcg_predictions(tc_dir, output_path, feat_idx=0, num_samples=4,
     print(f"TCG enabled: {info['tcg_enabled']}, num_patterns: {info['num_patterns']}")
     print(f"Data shape: inputs={inputs.shape}, predictions={predictions.shape}, targets={targets.shape}")
     
-    # 计算每个样本的 MAE
     mae_per_sample = np.mean(np.abs(predictions[:, :, feat_idx] - targets[:, :, feat_idx]), axis=1)
-    
-    # 根据选择策略选择样本
+
     if selection == 'high_error':
         indices = np.argsort(mae_per_sample)[-num_samples:]
     elif selection == 'low_error':
@@ -158,7 +159,7 @@ def plot_tcg_predictions(tc_dir, output_path, feat_idx=0, num_samples=4,
     elif selection == 'random':
         indices = np.random.choice(len(mae_per_sample), num_samples, replace=False)
     elif selection == 'diverse':
-        # 选择误差分散的样本：低、中、高、超高
+        # Pick low / mid / high / max MAE samples
         sorted_idx = np.argsort(mae_per_sample)
         n = len(sorted_idx)
         if n >= 4:
@@ -171,13 +172,12 @@ def plot_tcg_predictions(tc_dir, output_path, feat_idx=0, num_samples=4,
     fig, axes = plt.subplots(1, 4, figsize=(16, 3.8), sharex=True, constrained_layout=True)
     axes = axes.flatten()
     
-    # 配色方案
     colors = {
-        'input': '#7F8C8D',      # 灰色 - 输入
-        'gt': '#27AE60',         # 绿色 - 真值
-        'pred': '#1F77B4',       # 蓝色 - 预测
-        'error': '#E74C3C',     # 红色 - 误差带
-        'vline': '#34495E'       # 深灰 - 分界线
+        'input': '#7F8C8D',      # input
+        'gt': '#27AE60',         # ground truth
+        'pred': '#1F77B4',       # prediction
+        'error': '#E74C3C',      # error band
+        'vline': '#34495E'       # input/output split
     }
     
     L_in = info['input_len']
@@ -191,48 +191,36 @@ def plot_tcg_predictions(tc_dir, output_path, feat_idx=0, num_samples=4,
         seq_gt = targets[idx, :, feat_idx]
         seq_pred = predictions[idx, :, feat_idx]
         
-        # 计算该样本的误差
         sample_mae = mae_per_sample[idx]
-        
-        # 绘制输入序列
+
         ax.plot(t_in, seq_in, color=colors['input'], label='Input', lw=1.5, alpha=0.6)
-        
-        # 绘制真值
         ax.plot(t_out, seq_gt, color=colors['gt'], label='GT', lw=2.0)
-        
-        # 绘制预测
         ax.plot(t_out, seq_pred, color=colors['pred'], label='Prediction', lw=2.0, ls='-')
-        
-        # 显示误差带（可选）
+
         if show_error_band:
             abs_error = np.abs(seq_gt - seq_pred)
-            # 使用半透明填充显示误差范围
             ax.fill_between(t_out, seq_pred - abs_error, seq_pred + abs_error, 
                            color=colors['error'], alpha=0.2, label='Error Band')
-        
-        # 绘制输入/输出分界线
+
         ax.axvline(x=L_in-1, color=colors['vline'], linestyle=':', lw=1.2)
-        
-        # 标题
+
         title = f"({chr(97+i)}) Sample #{idx} | MAE: {sample_mae:.4f}"
-        ax.set_title(title, fontweight='bold', fontsize=11, loc='center')
+        ax.set_title(title, loc="center")
         ax.grid(True, linestyle='--', alpha=0.25)
         
         ax.set_xlabel("Time Steps")
         if i == 0:
             ax.set_ylabel("Normalized Value")
         
-        # 设置x轴范围
         ax.set_xlim(0, L_in + L_out)
 
         leg_loc = "lower left" if i in (1, 3) else "upper left"
         ax.legend(**subplot_legend_kw(loc=leg_loc))
 
-    # 添加模型信息标题
     model_info_text = f"Model: {info['model_name']}"
     if info['tcg_enabled'].lower() == 'true':
         model_info_text += f" | TCG (K={info['num_patterns']})"
-    fig.suptitle(model_info_text, fontsize=10, y=1.02, style='italic')
+    fig.suptitle(model_info_text, y=1.02, style="italic")
 
     out_dir = Path(output_path)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -245,22 +233,20 @@ def plot_tcg_predictions(tc_dir, output_path, feat_idx=0, num_samples=4,
     return info
 
 # ==========================================
-# 4. 误差分析可视化
+# 4. Error analysis plots
 # ==========================================
 def plot_error_analysis(tc_dir, output_path, feat_idx=0, num_bins=50):
-    """分析预测误差的分布"""
+    """Histograms and per-timestep MAE for one feature."""
     set_academic_style()
     
     print(f"Loading data for error analysis: {tc_dir}")
     inputs, predictions, targets, info = load_test_results(tc_dir)
     
-    # 计算每个样本的 MAE 和 MSE
     mae_per_sample = np.mean(np.abs(predictions[:, :, feat_idx] - targets[:, :, feat_idx]), axis=1)
     mse_per_sample = np.mean((predictions[:, :, feat_idx] - targets[:, :, feat_idx])**2, axis=1)
     
     fig, axes = plt.subplots(1, 3, figsize=(12, 3.5), constrained_layout=True)
     
-    # 1. MAE 分布直方图
     ax1 = axes[0]
     ax1.hist(mae_per_sample, bins=num_bins, color='steelblue', edgecolor='navy', alpha=0.7)
     ax1.axvline(mae_per_sample.mean(), color='red', linestyle='--', lw=2, 
@@ -271,7 +257,6 @@ def plot_error_analysis(tc_dir, output_path, feat_idx=0, num_bins=50):
     ax1.legend()
     ax1.grid(True, alpha=0.3)
     
-    # 2. MSE 分布直方图
     ax2 = axes[1]
     ax2.hist(mse_per_sample, bins=num_bins, color='coral', edgecolor='darkred', alpha=0.7)
     ax2.axvline(mse_per_sample.mean(), color='red', linestyle='--', lw=2,
@@ -282,7 +267,6 @@ def plot_error_analysis(tc_dir, output_path, feat_idx=0, num_bins=50):
     ax2.legend()
     ax2.grid(True, alpha=0.3)
     
-    # 3. 时间步级别误差热力图
     ax3 = axes[2]
     abs_errors = np.abs(predictions[:, :, feat_idx] - targets[:, :, feat_idx])
     mean_error_per_timestep = np.mean(abs_errors, axis=0)
@@ -298,7 +282,7 @@ def plot_error_analysis(tc_dir, output_path, feat_idx=0, num_bins=50):
     ax3.legend()
     ax3.grid(True, alpha=0.3)
     
-    fig.suptitle(f"Error Analysis: {info['model_name']}", fontsize=12, fontweight='bold')
+    fig.suptitle(f"Error Analysis: {info['model_name']}", fontweight="bold")
     
     out_dir = Path(output_path)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -308,10 +292,10 @@ def plot_error_analysis(tc_dir, output_path, feat_idx=0, num_bins=50):
     print(f"Error analysis saved to: {out_dir / filename}")
 
 # ==========================================
-# 5. 多特征对比可视化
+# 5. Multi-feature comparison (one median-MAE sample)
 # ==========================================
 def plot_multifeature_comparison(tc_dir, output_path, num_features_shown=4):
-    """可视化多个特征的预测效果"""
+    """Plot several channels for the sample with median overall MAE."""
     set_academic_style()
     
     print(f"Loading data: {tc_dir}")
@@ -326,7 +310,6 @@ def plot_multifeature_comparison(tc_dir, output_path, num_features_shown=4):
     t_in = np.arange(L_in)
     t_out = np.arange(L_in, L_in + info['output_len'])
     
-    # 选择一个典型样本（误差适中的）
     mae_per_sample = np.mean(np.abs(predictions - targets), axis=(1, 2))
     mid_idx = np.argsort(mae_per_sample)[len(mae_per_sample)//2]
     
@@ -344,7 +327,7 @@ def plot_multifeature_comparison(tc_dir, output_path, num_features_shown=4):
         ax.axvline(L_in-1, color='#34495E', linestyle=':', lw=1.0)
         
         feat_mae = np.mean(np.abs(seq_gt - seq_pred))
-        ax.set_title(f"Feature {feat_idx} | MAE: {feat_mae:.4f}", fontsize=10)
+        ax.set_title(f"Feature {feat_idx} | MAE: {feat_mae:.4f}")
         ax.grid(True, alpha=0.25)
         
         ax.set_xlabel("Time Steps")
@@ -354,7 +337,7 @@ def plot_multifeature_comparison(tc_dir, output_path, num_features_shown=4):
         leg_loc = "lower left" if i in (1, 3) else "upper left"
         ax.legend(**subplot_legend_kw(loc=leg_loc))
     
-    fig.suptitle(f"Multi-Feature Prediction: {info['model_name']}", fontsize=11, fontweight='bold')
+    fig.suptitle(f"Multi-Feature Prediction: {info['model_name']}", fontweight="bold")
     
     out_dir = Path(output_path)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -363,13 +346,10 @@ def plot_multifeature_comparison(tc_dir, output_path, num_features_shown=4):
     print(f"Multi-feature visualization saved to: {out_dir / filename}")
 
 # ==========================================
-# 6. RAW vs TCG 对比可视化
+# 6. RAW vs TCG comparison
 # ==========================================
 def plot_comparison(before_dir, after_dir, output_path, feat_idx=0, threshold=30, fixed_indices=None):
-    """对比 RAW (before) 和 TCG (after) 的预测效果
-    
-    筛选策略：选择 TCG 相比 RAW 提升最大的样本
-    """
+    """Compare baseline (before) vs TCG (after); sample by relative MAE improvement."""
     set_academic_style()
     
     print(f"Loading RAW from: {before_dir}")
@@ -422,8 +402,10 @@ def plot_comparison(before_dir, after_dir, output_path, feat_idx=0, threshold=30
         
         ax.axvline(x=L_in-1, color='#34495E', linestyle=':', lw=1.2)
         imp_pct = improvement[idx] * 100
-        ax.set_title(f"({chr(97+i)}) Sample #{idx} | Imp: {imp_pct:+.1f}%", 
-                    fontweight='bold', fontsize=11, loc='center')
+        ax.set_title(
+            f"({chr(97+i)}) Sample #{idx} | Imp: {imp_pct:+.1f}%",
+            loc="center",
+        )
         ax.grid(True, linestyle='--', alpha=0.25)
         
         ax.set_xlabel("Time Steps")
@@ -446,12 +428,10 @@ def plot_comparison(before_dir, after_dir, output_path, feat_idx=0, threshold=30
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='TCG Visualization Tool')
     
-    # 对比模式
     parser.add_argument('--before', type=str, help='RAW/Baseline checkpoint directory')
     parser.add_argument('--after', type=str, help='TCG checkpoint directory')
-    
-    # 单模型模式
-    parser.add_argument('--tcg', type=str, help='TCG checkpoint directory (for single model mode)')
+
+    parser.add_argument('--tcg', type=str, help='TCG checkpoint directory (single-model mode)')
     
     parser.add_argument('--output', type=str, default='./', help='Output directory')
     parser.add_argument('--feat', type=int, default=0, help='Feature index to visualize')
@@ -477,6 +457,6 @@ if __name__ == "__main__":
                             args.show_error_band)
     else:
         parser.print_help()
-        print("\n请使用以下方式之一:")
-        print("  1. 对比模式: --before <raw_dir> --after <tcg_dir>")
-        print("  2. 单模型模式: --tcg <tcg_dir>")
+        print("\nUsage:")
+        print("  1. Compare: --before <raw_dir> --after <tcg_dir>")
+        print("  2. Single model: --tcg <tcg_dir>")

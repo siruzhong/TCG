@@ -99,11 +99,11 @@ MARKDOWN = os.path.join(REPO_ROOT, "tcg_result.md")
 CHECKPOINTS = os.path.join(REPO_ROOT, "checkpoints")
 
 # Optional dataset ordering source. If this CSV exists (produced by
-# ``vis/dataset_heterogeneity_analysis.py``), datasets will be emitted in its
-# row order -- which is by heterogeneity score, highest first. If it is
-# missing, we fall back to ``run_baselines.DATASETS`` declaration order.
+# ``vis/dataset_analysis.py``), datasets will be emitted in its row order --
+# which is by heterogeneity score, highest first. If it is missing, we fall
+# back to ``run_baselines.DATASETS`` declaration order.
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-HETEROGENEITY_CSV = os.path.join(THIS_DIR, "dataset_heterogeneity_statistic.csv")
+HETEROGENEITY_CSV = os.path.join(THIS_DIR, "dataset_analysis.csv")
 
 
 def _resolve_dataset_order() -> list:

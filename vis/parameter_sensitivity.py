@@ -2,18 +2,22 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 sns.set_theme(style="whitegrid", font_scale=1.0, rc={
-    "font.family": "serif",
-    "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+    "font.size": 11,
+    "axes.labelsize": 11,
+    "axes.titlesize": 12,
+    "axes.titleweight": "bold",
+    "xtick.labelsize": 10,
+    "ytick.labelsize": 10,
+    "legend.fontsize": 10,
+    "legend.title_fontsize": 11,
     "axes.edgecolor": ".15",
     "grid.linestyle": "--",
     "axes.linewidth": 1.2,
-    "font.size": 10,
-    "axes.labelsize": 11,
-    "axes.titlesize": 12,
-    "xtick.labelsize": 10,
-    "ytick.labelsize": 10,
-    "legend.fontsize": 8.5,
-    "legend.title_fontsize": 10,
+    "figure.dpi": 300,
+    "axes.facecolor": "white",
+    "figure.facecolor": "white",
 })
 
 horizons = [24, 36, 48, 60]
@@ -74,7 +78,7 @@ for i, h in enumerate(horizons):
 axes[0].set_xscale('log')
 axes[0].set_xticks([1e-5, 0.0001, 0.001, 0.1])
 axes[0].set_xticklabels(['0', '0.0001', '0.001', '0.1'])
-axes[0].set_title(r'(a) Orthogonal Regularization $\lambda$', fontweight='bold', fontsize=11)
+axes[0].set_title(r'(a) Orthogonal Regularization $\lambda$')
 axes[0].set_xlabel(r'Orthogonal Regularization $\lambda$')
 axes[0].set_ylabel('MSE')
 axes[0].legend(title='Horizon', loc='upper right', framealpha=0.9, edgecolor='gray')
@@ -94,7 +98,7 @@ for i, h in enumerate(horizons):
 
 axes[1].set_xticks([4, 8, 16, 32])
 axes[1].set_xticklabels(['4', '8', '16', '32'])
-axes[1].set_title(r'(b) Number of Patterns K', fontweight='bold', fontsize=11)
+axes[1].set_title(r'(b) Number of Patterns K')
 axes[1].set_xlabel(r'Number of Patterns K')
 axes[1].set_ylabel('MSE')
 axes[1].legend(title='Horizon', loc='upper right', framealpha=0.9, edgecolor='gray')
@@ -114,7 +118,7 @@ axes[2].scatter([0], [patch_conv_data['H=24'][0]], marker='*', s=150,
 
 axes[2].set_xticks(conv_x)
 axes[2].set_xticklabels(conv_labels)
-axes[2].set_title(r'(c) Conv Kernels (PatchTST)', fontweight='bold', fontsize=11)
+axes[2].set_title(r'(c) Conv Kernels (PatchTST)')
 axes[2].set_xlabel(r'Conv Kernels $k$')
 axes[2].set_ylabel('MSE')
 axes[2].legend(title='Horizon', loc='upper right', framealpha=0.9, edgecolor='gray')
@@ -134,12 +138,12 @@ axes[3].scatter([4], [cross_conv_data['H=24'][4]], marker='*', s=150,
 
 axes[3].set_xticks(conv_x)
 axes[3].set_xticklabels(conv_labels)
-axes[3].set_title(r'(d) Conv Kernels (Crossformer)', fontweight='bold', fontsize=11)
+axes[3].set_title(r'(d) Conv Kernels (Crossformer)')
 axes[3].set_xlabel(r'Conv Kernels $k$')
 axes[3].set_ylabel('MSE')
 axes[3].legend(title='Horizon', loc='upper right', framealpha=0.9, edgecolor='gray')
 axes[3].set_ylim([4.40, 6.20])
 axes[3].grid(True, linestyle='--', alpha=0.25)
 
-plt.savefig('parameter_sensitivity_analysis.pdf', bbox_inches='tight', dpi=300)
+plt.savefig('parameter_sensitivity.pdf', bbox_inches='tight', dpi=300)
 plt.show()

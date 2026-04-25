@@ -2,11 +2,11 @@
 
 Running this file produces two artefacts in ``vis/``:
 
-  1. ``dataset_heterogeneity_analysis.pdf``  -- per-dataset signal + rolling-std
-     figure, panels ordered by the composite heterogeneity score (most
-     heterogeneous first).
-  2. ``dataset_heterogeneity_statistic.csv`` -- stats table, also sorted by the
-     composite score in descending order.
+  1. ``dataset_analysis.pdf``  -- per-dataset signal + rolling-std figure,
+     panels ordered by the composite heterogeneity score (most heterogeneous
+     first).
+  2. ``dataset_analysis.csv`` -- stats table, also sorted by the composite
+     score in descending order.
 
 Metrics (computed from ALL channels per dataset, after z-normalising each
 channel):
@@ -61,8 +61,8 @@ except Exception:  # pragma: no cover - statsmodels is expected to be present
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 DATASET_ROOT = os.path.join(THIS_DIR, os.pardir, "datasets")
-OUT_PDF = os.path.join(THIS_DIR, "dataset_heterogeneity_analysis.pdf")
-OUT_CSV = os.path.join(THIS_DIR, "dataset_heterogeneity_statistic.csv")
+OUT_PDF = os.path.join(THIS_DIR, "dataset_analysis.pdf")
+OUT_CSV = os.path.join(THIS_DIR, "dataset_analysis.csv")
 
 # (name, domain, freq_str, freq_min)
 DATASETS = [
@@ -223,13 +223,32 @@ def attach_composite_score(stats_list: list[dict]) -> list[dict]:
 # --------------------------------------------------------------------------- #
 
 def plot_panels(sorted_stats: list[dict], info_by_name: dict) -> None:
-    rcParams.update({"font.size": 9, "pdf.fonttype": 42, "ps.fonttype": 42})
+    rcParams.update({
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+        "font.size": 11,
+        "axes.labelsize": 11,
+        "axes.titlesize": 12,
+        "axes.titleweight": "normal",
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "figure.titlesize": 12,
+        "figure.dpi": 300,
+        "axes.facecolor": "white",
+        "figure.facecolor": "white",
+        "axes.linewidth": 0.5,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+    })
     n = len(sorted_stats)
     ncols = 4
     nrows = int(np.ceil(n / ncols))
-    fig, axes = plt.subplots(nrows, ncols,
-                             figsize=(ncols * 4.0, nrows * 2.4),
-                             constrained_layout=True)
+    # Tight grid; pad_inches on save further trims PDF margins.
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(ncols * 3.9, nrows * 2.55),
+    )
     axes = np.array(axes).reshape(-1)
 
     for ax, st in zip(axes, sorted_stats):
@@ -252,17 +271,25 @@ def plot_panels(sorted_stats: list[dict], info_by_name: dict) -> None:
             ax2.set_yticks([])
             ax2.spines["top"].set_visible(False)
 
+        # Three short lines avoid horizontal overlap between adjacent columns.
         ax.set_title(
-            f"{name}  ({domain}, {freq_str})\n"
-            f"T={st['T']:,}  C={st['C']}  ADF$p$={st['adf_p']:.2f}  "
+            f"{name} ({domain}, {freq_str})\n"
+            f"$T$={st['T']:,}  $C$={st['C']}  ADF $p$={st['adf_p']:.2f}\n"
             f"$H_s$={st['spec_entropy']:.2f}  VoV={st['vov']:.2f}  "
             f"score={st['score']:.1f}",
             fontsize=8.5,
+            fontweight="normal",
+            pad=1,
         )
         ax.set_xticks([])
         ax.set_yticks([])
         for s in ("top", "right"):
             ax.spines[s].set_visible(False)
+        _lw = 0.5
+        for s in ("left", "bottom"):
+            ax.spines[s].set_linewidth(_lw)
+        if len(xn) > w:
+            ax2.spines["right"].set_linewidth(_lw)
 
     for ax in axes[n:]:
         ax.axis("off")
@@ -270,9 +297,17 @@ def plot_panels(sorted_stats: list[dict], info_by_name: dict) -> None:
     fig.suptitle(
         "Local heterogeneity across benchmark datasets "
         "(panels ordered by composite score, highest first)",
-        fontsize=10,
+        y=0.98,
     )
-    fig.savefig(OUT_PDF, bbox_inches="tight")
+    fig.subplots_adjust(
+        left=0.025,
+        right=0.985,
+        top=0.875,
+        bottom=0.025,
+        wspace=0.08,
+        hspace=0.40,
+    )
+    fig.savefig(OUT_PDF, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
     print(f"Saved figure to {OUT_PDF}")
 
