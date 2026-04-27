@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RQ2 Wide Scaling Sweep: PatchTST / TimesNet / TimeMixer on
+RQ2 Wide Scaling Sweep: PatchTST / TimesNet / TimeMixer, or WPMixer / TimeFilter, on
   - ETTh1       : input 96 -> pred 96
   - Illness     : input 24 -> pred 24
   - ExchangeRate: input 96 -> pred 96
@@ -26,26 +26,34 @@ if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
 from basicts.models.PatchTST import PatchTSTForForecasting, PatchTSTConfig
+from basicts.models.TimeFilter import TimeFilterForForecasting, TimeFilterConfig
 from basicts.models.TimeMixer import TimeMixerForForecasting, TimeMixerConfig
 from basicts.models.TimesNet import TimesNetForForecasting, TimesNetConfig
+from basicts.models.WPMixer import WPMixerForForecasting, WPMixerConfig
 from basicts.configs import BasicTSForecastingConfig, TCGConfig
 from basicts.runners.callback import EarlyStopping
 from basicts import BasicTSLauncher
 
-AVAILABLE_GPUS = [0, 1, 2, 3, 4, 5, 6, 7]
-JOBS_PER_GPU = 4
+AVAILABLE_GPUS = [0, 1, 3, 4, 5, 6, 7]
+JOBS_PER_GPU = 2
 
 # (model_name, dataset_name, num_features, input_len, output_len)
 RQ2_TASKS = [
-    ("PatchTST",    "ETTh1",        7, 96, 96),
-    ("TimesNet",    "ETTh1",        7, 96, 96),
-    ("TimeMixer",   "ETTh1",        7, 96, 96),
-    ("PatchTST",    "Illness",      7, 24, 24),
-    ("TimesNet",    "Illness",      7, 24, 24),
-    ("TimeMixer",   "Illness",      7, 24, 24),
-    ("PatchTST",    "ExchangeRate", 8, 96, 96),
-    ("TimesNet",    "ExchangeRate", 8, 96, 96),
-    ("TimeMixer",   "ExchangeRate", 8, 96, 96),
+    # ("PatchTST",    "ETTh1",        7, 96, 96),
+    # ("TimesNet",    "ETTh1",        7, 96, 96),
+    # ("TimeMixer",   "ETTh1",        7, 96, 96),
+    ("WPMixer",     "ETTh1",        7, 96, 96),
+    ("TimeFilter",  "ETTh1",        7, 96, 96),
+    # ("PatchTST",    "Illness",      7, 24, 24),
+    # ("TimesNet",    "Illness",      7, 24, 24),
+    # ("TimeMixer",   "Illness",      7, 24, 24),
+    ("WPMixer",     "Illness",      7, 24, 24),
+    ("TimeFilter",  "Illness",      7, 24, 24),
+    # ("PatchTST",    "ExchangeRate", 8, 96, 96),
+    # ("TimesNet",    "ExchangeRate", 8, 96, 96),
+    # ("TimeMixer",   "ExchangeRate", 8, 96, 96),
+    ("WPMixer",     "ExchangeRate", 8, 96, 96),
+    ("TimeFilter",  "ExchangeRate", 8, 96, 96),
 ]
 
 # 3 representative WIDE configs (all ~2x scaling factor vs base):
@@ -84,7 +92,15 @@ def _apply_overrides(cfg, overrides: dict | None):
 
 
 def get_model_config(model_name, input_len, output_len, num_features, dataset_name, overrides=None):
-    overrides = dict(overrides or {})
+    o = dict(overrides or {})
+    if model_name == "WPMixer" and o:
+        h, ff, _ = o["hidden_size"], o["intermediate_size"], o["num_layers"]
+        exp = max(2, min(20, ff // max(h, 1)))
+        o = {"d_model": h, "tfactor": exp, "dfactor": exp}
+    elif model_name == "TimeFilter" and o:
+        h, ff, nl = o["hidden_size"], o["intermediate_size"], o["num_layers"]
+        o = {"d_model": h, "d_ff": ff, "e_layers": nl}
+    overrides = o
     if model_name == "PatchTST":
         cfg = PatchTSTConfig(
             input_len=input_len,
@@ -111,6 +127,22 @@ def get_model_config(model_name, input_len, output_len, num_features, dataset_na
         )
         _apply_overrides(cfg, overrides)
         return TimesNetForForecasting, cfg, True
+    if model_name == "WPMixer":
+        cfg = WPMixerConfig(
+            input_len=input_len,
+            output_len=output_len,
+            num_features=num_features,
+        )
+        _apply_overrides(cfg, overrides)
+        return WPMixerForForecasting, cfg, False
+    if model_name == "TimeFilter":
+        cfg = TimeFilterConfig(
+            input_len=input_len,
+            output_len=output_len,
+            num_features=num_features,
+        )
+        _apply_overrides(cfg, overrides)
+        return TimeFilterForForecasting, cfg, False
     raise ValueError(f"Unknown model: {model_name}")
 
 

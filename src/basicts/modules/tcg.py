@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Sequence, Union
 
 import torch
 import torch.nn.functional as F
@@ -41,6 +41,7 @@ class TemporalContextualGating(nn.Module):
         d_model: int,
         num_patterns: int = 8,
         use_multiscale: bool = True,
+        conv_kernels: Optional[Sequence[int]] = None,
         identity_init: bool = True,
         discrete_topk: int = 1,
     ) -> None:
@@ -51,21 +52,25 @@ class TemporalContextualGating(nn.Module):
         self.discrete_topk = discrete_topk
         self.d_context = max(16, d_model // 4)
 
-        if use_multiscale:
-            k1, k2 = 3, 7
-            self.conv_k1 = nn.Conv1d(
-                d_model, d_model, k1, padding="same", groups=d_model, bias=True
-            )
-            self.conv_k2 = nn.Conv1d(
-                d_model, d_model, k2, padding="same", groups=d_model, bias=True
-            )
-            ctx_in = 2 * d_model
+        if conv_kernels is None:
+            kernels = (3, 7) if use_multiscale else (1,)
         else:
-            self.conv_k1 = nn.Conv1d(
-                d_model, d_model, 1, padding="same", groups=d_model, bias=True
-            )
-            self.conv_k2 = None
-            ctx_in = d_model
+            kernels = tuple(int(k) for k in conv_kernels)
+            if len(kernels) == 0:
+                raise ValueError("conv_kernels must not be empty")
+            if any(k <= 0 for k in kernels):
+                raise ValueError(f"conv_kernels must be positive, got {kernels}")
+        self.conv_kernels = kernels
+
+        self.conv_layers = nn.ModuleList(
+            [
+                nn.Conv1d(
+                    d_model, d_model, k, padding="same", groups=d_model, bias=True
+                )
+                for k in self.conv_kernels
+            ]
+        )
+        ctx_in = len(self.conv_layers) * d_model
 
         self.context_mlp = nn.Sequential(
             nn.Linear(ctx_in, self.d_context),
@@ -81,7 +86,7 @@ class TemporalContextualGating(nn.Module):
             self.gamma = nn.Parameter(torch.randn(1) * 0.01)
 
         nn.init.normal_(self.mode_table, std=0.02)
-        for conv in (self.conv_k1, self.conv_k2):
+        for conv in self.conv_layers:
             if conv is not None:
                 nn.init.kaiming_normal_(conv.weight, nonlinearity="linear")
                 if conv.bias is not None:
@@ -107,13 +112,11 @@ class TemporalContextualGating(nn.Module):
             raise ValueError(f"Expected d_model={self.d_model}, got {d}")
 
         xt = x.transpose(1, 2)  # [B, d, L]
-        if self.use_multiscale:
-            assert self.conv_k2 is not None
-            y1 = self.conv_k1(xt)
-            y2 = self.conv_k2(xt)
-            z = torch.cat([y1, y2], dim=1)  # [B, 2d, L]
+        conv_outs = [conv(xt) for conv in self.conv_layers]
+        if len(conv_outs) == 1:
+            z = conv_outs[0]
         else:
-            z = self.conv_k1(xt)
+            z = torch.cat(conv_outs, dim=1)
         z = z.transpose(1, 2)  # [B, L, 2d] or [B, L, d]
         c = self.context_mlp(z)  # [B, L, d_c]
         c_norm = F.normalize(c, dim=-1) # [B, L, d_c]
