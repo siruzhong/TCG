@@ -243,7 +243,7 @@ def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
         "TCMNet": "#d62728", 
     }
 
-    fig, ax = plt.subplots(figsize=(6, 5), dpi=300)
+    fig, ax = plt.subplots(figsize=(8, 5), dpi=300)
     ax.set_xscale("log")
 
     xs = [p.params / 1e6 for p in points]
@@ -257,11 +257,6 @@ def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
     ax.set_axisbelow(True)
 
     ax.set_title("COVID19 / Horizon=60 (Raw) - MSE vs Parameters")
-
-    avg_mse = sum(ys) / len(ys)
-    ax.axhline(y=avg_mse, color="#999999", linestyle="--", linewidth=1.5, alpha=0.6, zorder=1)
-    ax.text(x_max * 0.95, avg_mse + 0.015, "Average MSE", color="#777777", fontsize=10, ha='right', 
-            bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.8))
 
     # 【优化项】：因为气泡放大了，这里把偏移距离（xytext的数值）全都适当调大了，防止文字贴在气泡上
     label_styles = {
@@ -284,7 +279,7 @@ def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
         
         marker = "*" if is_ours else "o"
         # 【优化项】：气泡显著放大 (160->500, 600->900)
-        size = 900 if is_ours else 500  
+        size = 2000 if is_ours else 1600  
         edge_c = "#800000" if is_ours else "white"
         # 【优化项】：描边稍微加粗，增加立体感和清晰度
         edge_w = 1.5 if is_ours else 1.2
