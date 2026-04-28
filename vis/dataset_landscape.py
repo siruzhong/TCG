@@ -23,13 +23,29 @@ csv_data = """rank,dataset,domain,frequency,T,C,ADF_p,spectral_entropy,VoV,rank_
 df = pd.read_csv(StringIO(csv_data))
 
 # 2. Matplotlib defaults for publication PDFs
-plt.rcParams['font.family'] = 'serif'
-plt.rcParams['font.serif'] = ['Times New Roman', 'DejaVu Serif']
-plt.rcParams['pdf.fonttype'] = 42
-plt.rcParams['ps.fonttype'] = 42
+sns.set_theme(style="whitegrid", font_scale=1.0, rc={
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+    "font.size": 11,
+    "axes.labelsize": 11,
+    "axes.titlesize": 12,
+    "axes.titleweight": "bold",
+    "xtick.labelsize": 10,
+    "ytick.labelsize": 10,
+    "legend.fontsize": 10,
+    "legend.title_fontsize": 11,
+    "axes.edgecolor": ".15",
+    "grid.linestyle": "--",
+    "axes.linewidth": 1.2,
+    "figure.dpi": 300,
+    "axes.facecolor": "white",
+    "figure.facecolor": "white",
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
+})
 
 # 3. Figure
-fig, ax = plt.subplots(figsize=(8.0, 5), dpi=300)
+fig, ax = plt.subplots(figsize=(6.0, 5), dpi=300)
 
 # Bubble area scales with log10(T)
 t_log = np.log10(df['T'])
@@ -51,7 +67,7 @@ ax.axvline(x_mid, color='#AAAAAA', linestyle='--', linewidth=1.2, zorder=1, alph
 ax.axhline(y_mid, color='#AAAAAA', linestyle='--', linewidth=1.2, zorder=1, alpha=0.8)
 
 # Legend is above the axes, so corners stay symmetric in axes coordinates
-watermark_kwargs = dict(fontsize=13, color='#999999', alpha=0.18, fontweight='bold', ha='center', va='center', zorder=0)
+watermark_kwargs = dict(fontsize=11, color='#999999', alpha=0.18, ha='center', va='center', zorder=0)
 ax.text(0.25, 0.85, 'Low Complexity\nHigh Non-stationarity', transform=ax.transAxes, **watermark_kwargs)
 ax.text(0.75, 0.85, 'High Complexity\nHigh Non-stationarity', transform=ax.transAxes, **watermark_kwargs)
 ax.text(0.25, 0.15, 'Low Complexity\nLow Non-stationarity', transform=ax.transAxes, **watermark_kwargs)
@@ -75,25 +91,39 @@ y_pad = (y.max() - y.min()) * 0.1
 ax.set_xlim(x.min() - x_pad, x.max() + x_pad)
 ax.set_ylim(y.min() - y_pad, y.max() + y_pad)
 
-# 5. Dataset name labels
+# 5. Dataset name labels (per-dataset positions)
+label_positions = {
+    "Weather":        {"xytext": (10, 0), "ha": "left", "va": "center"},
+    "COVID19":        {"xytext": (6, 0), "ha": "left", "va": "center"},
+    "ExchangeRate":   {"xytext": (10, 0), "ha": "left", "va": "center"},
+    "VIX":            {"xytext": (-6, 0), "ha": "right", "va": "center"},
+    "BeijingAirQuality": {"xytext": (10, 0), "ha": "left", "va": "center"},
+    "ETTm2":          {"xytext": (-9, 0), "ha": "right", "va": "center"},
+    "ETTm1":          {"xytext": (0, -12), "ha": "center", "va": "top"},
+    "Sunspots":       {"xytext": (10, 0), "ha": "left", "va": "center"},
+}
+default_style = {"xytext": (0, 9), "ha": "center", "va": "bottom"}
+
 for i in range(df.shape[0]):
+    ds = df['dataset'].iloc[i]
+    style = label_positions.get(ds, default_style)
     ax.annotate(
-        df['dataset'].iloc[i],
+        ds,
         (x.iloc[i], y.iloc[i]),
-        xytext=(0, 9), 
+        xytext=style["xytext"],
         textcoords='offset points',
-        fontsize=9.5,
-        fontweight='bold',
+        fontsize=9,
+        fontweight='normal',
         color='#222222',
-        ha='center',
-        va='bottom',
+        ha=style["ha"],
+        va=style["va"],
         zorder=4
     )
 
 # 6. Axis labels and title (extra pad leaves room for the legend below the title)
-ax.set_xlabel('Spectral Entropy (Complexity)', fontsize=12, fontweight='bold')
-ax.set_ylabel('Volatility of Volatility (Non-stationarity)', fontsize=12, fontweight='bold')
-ax.set_title('Dataset Diversity Landscape: Complexity vs. Non-stationarity', fontsize=14, fontweight='bold', pad=60)
+ax.set_xlabel('Spectral Entropy (Complexity)')
+ax.set_ylabel('Volatility of Volatility (Non-stationarity)')
+ax.set_title('Dataset Diversity Landscape: Complexity vs. Non-stationarity', pad=60)
 
 ax.grid(axis='both', alpha=0.3, zorder=0, color='#E0E0E0')
 ax.spines['top'].set_visible(False)
@@ -115,7 +145,7 @@ leg = ax.legend(
     bbox_to_anchor=(0.5, 1.02),
     ncol=4,
     frameon=False,
-    fontsize=10.5,
+    fontsize=10,
     columnspacing=1.5,
     handletextpad=0.3,
 )

@@ -6,10 +6,11 @@ RQ2 Wide Scaling Sweep: PatchTST / TimesNet / TimeMixer, or WPMixer / TimeFilter
   - ExchangeRate: input 96 -> pred 96
 
 Only runs WIDE scaling variants (no RAW / TCG — results already in tcg_result.md).
-Each (model, dataset) runs 3 representative WIDE configs:
-  1) 2x width  : hidden=512,  intermediate=2048, num_layers=1
-  2) 2x depth  : hidden=256,  intermediate=1024, num_layers=2
-  3) 2x both   : hidden=512,  intermediate=2048, num_layers=2
+Each (model, dataset) runs 4 scaling configs:
+  1) 2x width     : hidden=512,  intermediate=2048, num_layers=1
+  2) 2x depth     : hidden=256,  intermediate=1024, num_layers=2
+  3) 2x both      : hidden=512,  intermediate=2048, num_layers=2
+  4) param_match  : width auto-tuned so base model params ≈ base+TCG params
 
 Outputs (see `RQ2_CKPT_SAVE_DIR`): each job saves under ``{RQ2_CKPT_SAVE_DIR}/{md5}/`` —
 checkpoints (``*.pt``), ``training_log_*.log``, ``tensorboard/``, ``cfg.json``, ``test_metrics.json``.
@@ -19,8 +20,10 @@ import sys
 import time
 from multiprocessing import Process, Queue
 
+import torch
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
-RQ2_CKPT_SAVE_DIR = os.path.join(script_dir, "checkpoints", "test_scaling")
+RQ2_CKPT_SAVE_DIR = os.path.join(script_dir, "checkpoints", "test_scaling_match")
 src_dir = os.path.join(script_dir, "src")
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
@@ -39,20 +42,20 @@ JOBS_PER_GPU = 2
 
 # (model_name, dataset_name, num_features, input_len, output_len)
 RQ2_TASKS = [
-    # ("PatchTST",    "ETTh1",        7, 96, 96),
-    # ("TimesNet",    "ETTh1",        7, 96, 96),
+    ("PatchTST",    "ETTh1",        7, 96, 96),
+    ("TimesNet",    "ETTh1",        7, 96, 96),
     # ("TimeMixer",   "ETTh1",        7, 96, 96),
-    ("WPMixer",     "ETTh1",        7, 96, 96),
+    # ("WPMixer",     "ETTh1",        7, 96, 96),
     ("TimeFilter",  "ETTh1",        7, 96, 96),
-    # ("PatchTST",    "Illness",      7, 24, 24),
-    # ("TimesNet",    "Illness",      7, 24, 24),
+    ("PatchTST",    "Illness",      7, 24, 24),
+    ("TimesNet",    "Illness",      7, 24, 24),
     # ("TimeMixer",   "Illness",      7, 24, 24),
-    ("WPMixer",     "Illness",      7, 24, 24),
+    # ("WPMixer",     "Illness",      7, 24, 24),
     ("TimeFilter",  "Illness",      7, 24, 24),
-    # ("PatchTST",    "ExchangeRate", 8, 96, 96),
-    # ("TimesNet",    "ExchangeRate", 8, 96, 96),
+    ("PatchTST",    "ExchangeRate", 8, 96, 96),
+    ("TimesNet",    "ExchangeRate", 8, 96, 96),
     # ("TimeMixer",   "ExchangeRate", 8, 96, 96),
-    ("WPMixer",     "ExchangeRate", 8, 96, 96),
+    # ("WPMixer",     "ExchangeRate", 8, 96, 96),
     ("TimeFilter",  "ExchangeRate", 8, 96, 96),
 ]
 
@@ -61,9 +64,10 @@ RQ2_TASKS = [
 #   - 2x depth : only depth scaled
 #   - 2x both  : width and depth both scaled
 WIDE_CONFIGS = [
-    {"tag": "w2_d1", "hidden_size": 512,  "intermediate_size": 2048, "num_layers": 1},  # 2x width
-    {"tag": "w1_d2", "hidden_size": 256,  "intermediate_size": 1024, "num_layers": 2},  # 2x depth
-    {"tag": "w2_d2", "hidden_size": 512,  "intermediate_size": 2048, "num_layers": 2},  # 2x both
+    # {"tag": "w2_d1", "hidden_size": 512,  "intermediate_size": 2048, "num_layers": 1},  # 2x width
+    # {"tag": "w1_d2", "hidden_size": 256,  "intermediate_size": 1024, "num_layers": 2},  # 2x depth
+    # {"tag": "w2_d2", "hidden_size": 512,  "intermediate_size": 2048, "num_layers": 2},  # 2x both
+    {"tag": "param_match", "hidden_size": 0, "intermediate_size": 0, "num_layers": 1},  # params ≈ base+TCG
 ]
 
 USE_CLEAN_TARGETS = True
@@ -89,6 +93,55 @@ def _apply_overrides(cfg, overrides: dict | None):
             setattr(cfg, k, v)
         else:
             raise ValueError(f"Unknown field {k} on {type(cfg).__name__}")
+
+
+def _count_params(model_name, dataset_name, num_features, input_len, output_len, overrides, use_tcg):
+    mclass, cfg, ts = get_model_config(
+        model_name, input_len, output_len, num_features, dataset_name, overrides=overrides
+    )
+    if hasattr(cfg, "tcg"):
+        cfg.tcg = TCGConfig(enabled=use_tcg)
+    model = mclass(cfg)
+    model = model.cpu()
+    n = sum(p.numel() for p in model.parameters())
+    del model
+    return n
+
+
+def find_param_matched_overrides(model_name, dataset_name, num_features, input_len, output_len):
+    target = _count_params(model_name, dataset_name, num_features,
+                           input_len, output_len, None, use_tcg=True)
+
+    candidates = [32, 48, 64, 96, 128, 160, 192, 224, 256, 288, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024]
+    best_diff = float("inf")
+    best_overrides = None
+    best_params = 0
+
+    for h in candidates:
+        ff = max(64, h * 4)
+        overrides = {"hidden_size": h, "intermediate_size": ff, "num_layers": 1}
+        try:
+            params = _count_params(model_name, dataset_name, num_features,
+                                   input_len, output_len, overrides, use_tcg=False)
+            diff = abs(params - target)
+            if diff < best_diff:
+                best_diff = diff
+                best_params = params
+                best_overrides = dict(overrides)
+        except Exception:
+            continue
+
+    if best_overrides is None:
+        return None
+    if best_diff > target * 0.5:
+        print(f"  [param_match] {model_name}/{dataset_name}: "
+              f"target={target / 1e6:.2f}M best={best_params / 1e6:.2f}M "
+              f"(diff={best_diff / 1e6:.2f}M > 50% of target, skipping)")
+        return None
+    print(f"  [param_match] {model_name}/{dataset_name}: "
+          f"target={target / 1e6:.2f}M -> matched={best_params / 1e6:.2f}M, "
+          f"hidden={best_overrides['hidden_size']}")
+    return best_overrides
 
 
 def get_model_config(model_name, input_len, output_len, num_features, dataset_name, overrides=None):
@@ -223,6 +276,9 @@ def worker(
 
 
 if __name__ == "__main__":
+    import multiprocessing as mp
+    mp.set_start_method("spawn", force=True)
+
     gpu_queue = Queue()
     for gid in AVAILABLE_GPUS:
         for _ in range(JOBS_PER_GPU):
@@ -238,11 +294,19 @@ if __name__ == "__main__":
     for model_name, dataset_name, num_features, input_len, output_len in RQ2_TASKS:
         for wide_cfg in WIDE_CONFIGS:
             tag = f"RQ2_WIDE_{wide_cfg['tag']}"
-            overrides = {
-                "hidden_size": wide_cfg["hidden_size"],
-                "intermediate_size": wide_cfg["intermediate_size"],
-                "num_layers": wide_cfg["num_layers"],
-            }
+            if wide_cfg["tag"] == "param_match":
+                overrides = find_param_matched_overrides(
+                    model_name, dataset_name, num_features, input_len, output_len
+                )
+                if overrides is None:
+                    print(f"  [skip] param_match failed for {model_name}/{dataset_name}")
+                    continue
+            else:
+                overrides = {
+                    "hidden_size": wide_cfg["hidden_size"],
+                    "intermediate_size": wide_cfg["intermediate_size"],
+                    "num_layers": wide_cfg["num_layers"],
+                }
             p = Process(
                 target=worker,
                 args=(
