@@ -14,7 +14,7 @@ from basicts.runners.callback import EarlyStopping
 from basicts import BasicTSLauncher
 
 AVAILABLE_GPUS = [0, 1, 2, 3, 4, 5, 6, 7]
-JOBS_PER_GPU = 8
+JOBS_PER_GPU = 4
 
 DATASETS = [
     ("ETTh1", 7),
@@ -39,21 +39,25 @@ DATASET_CONFIGS = {
     "default":  {"input_lens": [96], "output_lens": [96, 192, 336, 720]},
 }
 
-# TCM-Net hyperparameter search grid (empirically reduced)
-NUM_PATTERNS_SEARCH = [8]
-ORTH_LAMBDA_SEARCH = [1e-3]
+# TCM-Net hyperparameter search grid (expanded)
+NUM_PATTERNS_SEARCH = [4, 8, 16]
+ORTH_LAMBDA_SEARCH = [1e-3, 1e-4]
 HIDDEN_SIZE_SEARCH = [128, 256]
 PATCH_LEN_SEARCH = [16]
 MLP_EXPANSION_SEARCH = [2.0, 4.0]
+NUM_MLP_LAYERS_SEARCH = [2, 3]
+USE_MULTISCALE_SEARCH = [True, False]
+IDENTITY_INIT_SEARCH = [False]
 
 CHECKPOINT_BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkpoints")
 
 
-def _check_results_exist(dataset_name, input_len, output_len, num_patterns, orth_lambda, hidden_size):
+def _check_results_exist(dataset_name, input_len, output_len, num_patterns, orth_lambda,
+                         hidden_size, patch_len, mlp_expansion, num_mlp_layers, use_multiscale, identity_init):
     base_dir = os.path.join(CHECKPOINT_BASE, "TCMNet", f"{dataset_name}_100_{input_len}_{output_len}")
     if not os.path.exists(base_dir):
         return False
-    
+
     for subdir in os.listdir(base_dir):
         full_path = os.path.join(base_dir, subdir)
         if not os.path.isdir(full_path):
@@ -70,10 +74,20 @@ def _check_results_exist(dataset_name, input_len, output_len, num_patterns, orth
             cfg_num_patterns = model_params.get("num_patterns", 0)
             cfg_orth_lambda = model_params.get("orth_lambda", 0)
             cfg_hidden_size = model_params.get("hidden_size", 0)
-            
-            if (cfg_num_patterns == num_patterns and 
+            cfg_patch_len = model_params.get("patch_len", 0)
+            cfg_mlp_expansion = model_params.get("mlp_expansion", 0)
+            cfg_num_mlp_layers = model_params.get("num_mlp_layers", 0)
+            cfg_use_multiscale = model_params.get("use_multiscale", False)
+            cfg_identity_init = model_params.get("identity_init", True)
+
+            if (cfg_num_patterns == num_patterns and
                 cfg_orth_lambda == orth_lambda and
-                cfg_hidden_size == hidden_size):
+                cfg_hidden_size == hidden_size and
+                cfg_patch_len == patch_len and
+                cfg_mlp_expansion == mlp_expansion and
+                cfg_num_mlp_layers == num_mlp_layers and
+                cfg_use_multiscale == use_multiscale and
+                cfg_identity_init == identity_init):
                 return True
         except Exception:
             continue
@@ -88,7 +102,8 @@ def _format_value(x: float) -> str:
 
 
 def run_experiment(dataset_name, num_features, input_len, output_len, gpu_id,
-                   num_patterns, orth_lambda, hidden_size, patch_len, mlp_expansion):
+                   num_patterns, orth_lambda, hidden_size, patch_len, mlp_expansion,
+                   num_mlp_layers, use_multiscale, identity_init):
     cfg = TCMNetConfig(
         input_len=input_len,
         output_len=output_len,
@@ -96,11 +111,12 @@ def run_experiment(dataset_name, num_features, input_len, output_len, gpu_id,
         patch_len=patch_len,
         patch_stride=patch_len // 2,
         hidden_size=hidden_size,
-        num_mlp_layers=2,
+        num_mlp_layers=num_mlp_layers,
         mlp_expansion=mlp_expansion,
         mlp_dropout=0.1,
         num_patterns=num_patterns,
-        use_multiscale=False,
+        use_multiscale=use_multiscale,
+        identity_init=identity_init,
         orth_lambda=orth_lambda,
         head_dropout=0.0,
         use_revin=True,
@@ -133,13 +149,20 @@ def worker_task(
     hidden_size,
     patch_len,
     mlp_expansion,
+    num_mlp_layers,
+    use_multiscale,
+    identity_init,
 ):
     task_id = (
         f"TCMNet | {dataset_name} | {input_len}->{output_len} | "
-        f"K={num_patterns} orth={_format_value(orth_lambda)} hid={hidden_size} patch={patch_len} mlp={mlp_expansion}"
+        f"K={num_patterns} orth={_format_value(orth_lambda)} hid={hidden_size} "
+        f"patch={patch_len} mlp={mlp_expansion} layers={num_mlp_layers} "
+        f"ms={use_multiscale} ident={identity_init}"
     )
 
-    if _check_results_exist(dataset_name, input_len, output_len, num_patterns, orth_lambda, hidden_size):
+    if _check_results_exist(dataset_name, input_len, output_len, num_patterns, orth_lambda,
+                           hidden_size, patch_len, mlp_expansion, num_mlp_layers,
+                           use_multiscale, identity_init):
         print(f"[Skip] {task_id} - results already exist")
         return
 
@@ -159,6 +182,9 @@ def worker_task(
             hidden_size,
             patch_len,
             mlp_expansion,
+            num_mlp_layers,
+            use_multiscale,
+            identity_init,
         )
 
     except Exception as e:
@@ -184,12 +210,20 @@ if __name__ == "__main__":
         f"(up to {max_concurrent} concurrent, JOBS_PER_GPU={JOBS_PER_GPU})"
     )
 
-    total_combos = len(NUM_PATTERNS_SEARCH) * len(ORTH_LAMBDA_SEARCH) * \
-                   len(HIDDEN_SIZE_SEARCH) * len(PATCH_LEN_SEARCH) * len(MLP_EXPANSION_SEARCH)
+    total_combos = (len(NUM_PATTERNS_SEARCH) * len(ORTH_LAMBDA_SEARCH) *
+                   len(HIDDEN_SIZE_SEARCH) * len(PATCH_LEN_SEARCH) *
+                   len(MLP_EXPANSION_SEARCH) * len(NUM_MLP_LAYERS_SEARCH) *
+                   len(USE_MULTISCALE_SEARCH) * len(IDENTITY_INIT_SEARCH))
     print(
-        f"Hyperparameter grid: num_patterns={NUM_PATTERNS_SEARCH}, "
-        f"orth_lambda={ORTH_LAMBDA_SEARCH}, hidden_size={HIDDEN_SIZE_SEARCH}, "
-        f"patch_len={PATCH_LEN_SEARCH}, mlp_expansion={MLP_EXPANSION_SEARCH} "
+        f"Hyperparameter grid: "
+        f"num_patterns={NUM_PATTERNS_SEARCH}, "
+        f"orth_lambda={ORTH_LAMBDA_SEARCH}, "
+        f"hidden_size={HIDDEN_SIZE_SEARCH}, "
+        f"patch_len={PATCH_LEN_SEARCH}, "
+        f"mlp_expansion={MLP_EXPANSION_SEARCH}, "
+        f"num_mlp_layers={NUM_MLP_LAYERS_SEARCH}, "
+        f"use_multiscale={USE_MULTISCALE_SEARCH}, "
+        f"identity_init={IDENTITY_INIT_SEARCH} "
         f"({total_combos} combos per config)"
     )
 
@@ -205,25 +239,31 @@ if __name__ == "__main__":
                         for hidden_size in HIDDEN_SIZE_SEARCH:
                             for patch_len in PATCH_LEN_SEARCH:
                                 for mlp_expansion in MLP_EXPANSION_SEARCH:
-                                    p = Process(
-                                        target=worker_task,
-                                        args=(
-                                            gpu_queue,
-                                            dataset_name,
-                                            num_features,
-                                            input_len,
-                                            output_len,
-                                            num_patterns,
-                                            orth_lambda,
-                                            hidden_size,
-                                            patch_len,
-                                            mlp_expansion,
-                                        ),
-                                    )
-                                    p.start()
-                                    processes.append(p)
-                                    time.sleep(0.1)
-                                    total_tasks += 1
+                                    for num_mlp_layers in NUM_MLP_LAYERS_SEARCH:
+                                        for use_multiscale in USE_MULTISCALE_SEARCH:
+                                            for identity_init in IDENTITY_INIT_SEARCH:
+                                                p = Process(
+                                                    target=worker_task,
+                                                    args=(
+                                                        gpu_queue,
+                                                        dataset_name,
+                                                        num_features,
+                                                        input_len,
+                                                        output_len,
+                                                        num_patterns,
+                                                        orth_lambda,
+                                                        hidden_size,
+                                                        patch_len,
+                                                        mlp_expansion,
+                                                        num_mlp_layers,
+                                                        use_multiscale,
+                                                        identity_init,
+                                                    ),
+                                                )
+                                                p.start()
+                                                processes.append(p)
+                                                time.sleep(0.1)
+                                                total_tasks += 1
 
     print(f"Scheduled {len(processes)} TCM-Net tasks")
 

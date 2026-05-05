@@ -123,7 +123,7 @@ for i in range(df.shape[0]):
 # 6. Axis labels and title (extra pad leaves room for the legend below the title)
 ax.set_xlabel('Spectral Entropy (Complexity)')
 ax.set_ylabel('Volatility of Volatility (Non-stationarity)')
-ax.set_title('Dataset Diversity Landscape: Complexity vs. Non-stationarity', pad=60)
+# ax.set_title('Dataset Diversity Landscape: Complexity vs. Non-stationarity', pad=60)
 
 ax.grid(axis='both', alpha=0.3, zorder=0, color='#E0E0E0')
 ax.spines['top'].set_visible(False)
