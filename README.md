@@ -1,6 +1,6 @@
-# Adaptive Feature Recalibration for Non-Stationary Time Series Forecasting
+# Perceive, Route and Modulate: Dynamic Pattern Recalibration for Time Series Forecasting
 
-Official code for the work **“Adaptive Feature Recalibration for Non-Stationary Time Series Forecasting”**, centered on **Dynamic Pattern Routing (DPR)** and the minimalist forecaster **DPRNet**.
+Official code for **“Perceive, Route and Modulate: Dynamic Pattern Recalibration for Time Series Forecasting”**, centered on **Dynamic Pattern Routing (DPR)** and the minimalist forecaster **DPRNet**.
 
 **Terminology.** **DPR** is implemented as [`TemporalContextualGating`](src/basicts/modules/dpr.py) (`Perceive → Route → Modulate`), configured via [`DPRConfig`](src/basicts/configs/dpr_config.py). **DPRNet** is the dedicated model stack in [`src/basicts/models/DPRNet/`](src/basicts/models/DPRNet/). The same DPR adapter can be attached to other backbones for plug-and-play experiments.
 
