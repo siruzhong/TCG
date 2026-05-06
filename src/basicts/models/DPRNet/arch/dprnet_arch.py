@@ -18,23 +18,33 @@ class DPRBlock(nn.Module):
         
         mlp_layers = []
         intermediate_dim = int(config.hidden_size * config.mlp_expansion)
-        
-        for i in range(config.num_mlp_layers):
-            if i == 0:
-                mlp_layers.append(nn.Linear(config.hidden_size, intermediate_dim))
-            elif i == config.num_mlp_layers - 1:
-                mlp_layers.append(nn.Linear(intermediate_dim, config.hidden_size))
-            else:
-                mlp_layers.append(nn.Linear(intermediate_dim, intermediate_dim))
-            
-            if i < config.num_mlp_layers - 1:
-                if config.mlp_activation == "gelu":
-                    mlp_layers.append(nn.GELU())
-                elif config.mlp_activation == "relu":
-                    mlp_layers.append(nn.ReLU())
-                elif config.mlp_activation == "silu":
-                    mlp_layers.append(nn.SiLU())
-                mlp_layers.append(nn.Dropout(config.mlp_dropout))
+
+        def _append_activation_and_dropout():
+            if config.mlp_activation == "gelu":
+                mlp_layers.append(nn.GELU())
+            elif config.mlp_activation == "relu":
+                mlp_layers.append(nn.ReLU())
+            elif config.mlp_activation == "silu":
+                mlp_layers.append(nn.SiLU())
+            mlp_layers.append(nn.Dropout(config.mlp_dropout))
+
+        # num_mlp_layers==1: only the i==0 branch ran in the old loop, so the output
+        # stayed at intermediate_dim and broke the residual (hidden_size) add.
+        if config.num_mlp_layers == 1:
+            mlp_layers.append(nn.Linear(config.hidden_size, intermediate_dim))
+            _append_activation_and_dropout()
+            mlp_layers.append(nn.Linear(intermediate_dim, config.hidden_size))
+        else:
+            for i in range(config.num_mlp_layers):
+                if i == 0:
+                    mlp_layers.append(nn.Linear(config.hidden_size, intermediate_dim))
+                elif i == config.num_mlp_layers - 1:
+                    mlp_layers.append(nn.Linear(intermediate_dim, config.hidden_size))
+                else:
+                    mlp_layers.append(nn.Linear(intermediate_dim, intermediate_dim))
+
+                if i < config.num_mlp_layers - 1:
+                    _append_activation_and_dropout()
         
         self.base_mapping = nn.Sequential(*mlp_layers)
         
