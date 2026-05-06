@@ -36,7 +36,7 @@ def masked_corr(prediction: torch.Tensor, targets: torch.Tensor, targets_mask: t
 
     # Compute the Pearson Correlation Coefficient
     numerator = torch.sum(prediction_dev * target_dev, dim=1, keepdim=True)
-    denominator = torch.sqrt(torch.sum(prediction_dev ** 2, dim=1, keepdim=True) * torch.sum(target_dev ** 2, dim=1, keepdim=True))  # 分母
+    denominator = torch.sqrt(torch.sum(prediction_dev ** 2, dim=1, keepdim=True) * torch.sum(target_dev ** 2, dim=1, keepdim=True))  # Denominator
     loss = numerator / denominator
 
     loss = loss * mask  # Apply the mask to the loss

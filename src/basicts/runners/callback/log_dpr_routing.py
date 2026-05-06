@@ -15,7 +15,7 @@ class LogDPRRouting(BasicTSCallback):
         super().__init__()
         self.log_interval = log_interval
         self._hooks = []
-        self.routing_stats = []  # 用列表收集整个 Epoch 的数据
+        self.routing_stats = []  # Per-batch routing tensors accumulated over the epoch
 
     def on_train_start(self, runner: "BasicTSRunner", *args, **kwargs) -> None:
         self._patch_dpr(runner.model)
@@ -31,7 +31,7 @@ class LogDPRRouting(BasicTSCallback):
                     def patched(x, return_aux=False):
                         result, aux = orig(x, return_aux=True)
                         if isinstance(aux, dict) and "routing_probs" in aux:
-                            # 修复：将每个 batch 的数据转移到 CPU 并追加到列表中
+                            # Move each batch to CPU and append (avoid GPU memory growth)
                             self.routing_stats.append(aux["routing_probs"].detach().cpu())
                             if return_aux:
                                 return result, aux
@@ -49,25 +49,25 @@ class LogDPRRouting(BasicTSCallback):
             runner.logger.info(f"[Epoch {epoch}] DPR Routing: No routing captured yet")
             return
 
-        # 修复：拼接整个 Epoch 的所有 Batch，形状为 [Total_B, L, P]
+        # Concatenate all batches in the epoch; shape [Total_B, L, P]
         routing = torch.cat(self.routing_stats, dim=0).numpy()
-        self.routing_stats.clear()  # 清空列表，为下一个 Epoch 做准备
+        self.routing_stats.clear()  # Reset for the next epoch
 
-        # --- 1. 时序维度的切换统计 (核心指标) ---
+        # --- 1. Temporal switching statistics (main metrics) ---
 
-        # 1.a 硬切换率 (Hard Switching Rate)
-        # 获取每个时刻选中的 top-1 pattern: [Total_B, L]
+        # 1.a Hard switching rate
+        # Top-1 pattern index per timestep: [Total_B, L]
         hard_choices = routing.argmax(axis=-1)
-        # 比较相邻时刻 pattern 是否变化: [Total_B, L-1]
+        # Whether pattern differs between adjacent timesteps: [Total_B, L-1]
         switches = (hard_choices[:, 1:] != hard_choices[:, :-1]).astype(float)
-        switch_rate = switches.mean()  # 0% 表示从不切换，接近 100% 表示频繁震荡
+        switch_rate = switches.mean()  # ~0%: stable pattern; ~100%: frequent oscillation
 
-        # 1.b 软变化幅度 (Soft Temporal Difference - L1 Distance)
-        # [Total_B, L-1, P] 算绝对差值的和
+        # 1.b Soft temporal change (L1 distance between consecutive routing vectors)
+        # Sum absolute differences over P for each adjacent timestep pair
         soft_diff = np.abs(routing[:, 1:, :] - routing[:, :-1, :]).sum(axis=-1)
-        mean_soft_diff = soft_diff.mean()  # 最大值为 2.0 (完全正交的切换)
+        mean_soft_diff = soft_diff.mean()  # Upper bound 2.0 for orthogonal one-hot switches
 
-        # --- 2. 模式的使用平衡度与置信度 (原始指标保留) ---
+        # --- 2. Pattern usage balance and routing confidence (legacy metrics) ---
 
         # [Total_B, L, P] -> per-timestep entropy: [Total_B, L]
         per_timestep_entropy = -(routing * np.log(routing + 1e-8)).sum(-1)

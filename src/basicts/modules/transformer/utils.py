@@ -26,7 +26,7 @@ def prepare_causal_attention_mask(
     device = inputs_embeds.device
     dtype = inputs_embeds.dtype
 
-    # 1. 创建因果掩码（下三角矩阵）
+    # 1. Build causal attention mask (lower triangular: past tokens only)
     causal_mask = torch.triu(
         torch.ones((seq_len, seq_len), device=device, dtype=torch.bool), diagonal=1
     ) # [seq_len, seq_len]

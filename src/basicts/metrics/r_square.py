@@ -32,7 +32,7 @@ def masked_r2(prediction: torch.Tensor, targets: torch.Tensor, targets_mask: tor
     ss_res = torch.sum(torch.pow((targets - prediction), 2), dim=1)
     ss_tot = torch.sum(torch.pow(targets - torch.mean(targets, dim=1, keepdim=True), 2), dim=1)
 
-    # 计算 R^2
+    # R^2 score
     loss = 1 - (ss_res / (ss_tot + 1e-6))
 
     loss = torch.nan_to_num(loss)  # Replace any NaNs in the loss with zero

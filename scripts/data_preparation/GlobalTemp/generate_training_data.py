@@ -75,7 +75,7 @@ def add_temporal_features(df):
     if add_day_of_year:
         # numerical day_of_year
         doy = (df.index.dayofyear - 1) / 366 # df.index.month starts from 1. We need to minus 1 to make it start from 0.
-        timestamps.append(doy.values) # 李雨杰 debug 通过
+        timestamps.append(doy.values)  # Sanity-checked
 
     timestamps = np.stack(timestamps, axis=-1)
     return timestamps

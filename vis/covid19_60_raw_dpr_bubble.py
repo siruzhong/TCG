@@ -258,7 +258,7 @@ def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
 
     ax.set_title("COVID19 / Horizon=60 (Raw) - MSE vs Parameters")
 
-    # 【优化项】：因为气泡放大了，这里把偏移距离（xytext的数值）全都适当调大了，防止文字贴在气泡上
+    # Layout: larger markers need larger xytext offsets so labels clear the bubbles
     label_styles = {
         "Informer": {"xytext": (0, 16), "ha": "center", "va": "bottom"},
         "Crossformer": {"xytext": (0, -18), "ha": "center", "va": "top"},
@@ -278,10 +278,10 @@ def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
         is_ours = (p.model == "DPRNet")
         
         marker = "*" if is_ours else "o"
-        # 【优化项】：气泡显著放大 (160->500, 600->900)
+        # Emphasize ours with larger scatter marker sizes
         size = 2000 if is_ours else 1600  
         edge_c = "#800000" if is_ours else "white"
-        # 【优化项】：描边稍微加粗，增加立体感和清晰度
+        # Slightly thicker edge for readability and depth
         edge_w = 1.5 if is_ours else 1.2
         alpha_val = 1.0 if is_ours else 0.85
 
@@ -318,7 +318,7 @@ def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
         )
         annotations.append(ann)
 
-    # 自动挪动标签，尽量避免相互重叠（基于屏幕坐标）
+    # Iteratively nudge labels in screen coordinates to reduce overlap
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
     for _ in range(140):
