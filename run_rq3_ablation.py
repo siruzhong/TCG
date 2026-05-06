@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RQ2 Ablation Study: TCG Component Analysis on Illness and ExchangeRate.
+RQ2 Ablation Study: DPR Component Analysis on Illness and ExchangeRate.
 
 Ablation variants:
     1) w/o Multi-scale  : use_multiscale=False (k=1 conv instead of k1=3, k2=7)
@@ -26,7 +26,7 @@ from basicts.models.PatchTST import PatchTSTForForecasting, PatchTSTConfig
 from basicts.models.TimeMixer import TimeMixerForForecasting, TimeMixerConfig
 from basicts.models.Informer import Informer, InformerConfig
 from basicts.models.Crossformer import Crossformer, CrossformerConfig
-from basicts.configs import BasicTSForecastingConfig, TCGConfig
+from basicts.configs import BasicTSForecastingConfig, DPRConfig
 from basicts.runners.callback import EarlyStopping
 from basicts import BasicTSLauncher
 
@@ -127,7 +127,7 @@ def run_experiment(
     output_len,
     gpu_id,
     model_overrides=None,
-    tcg_overrides=None,
+    dpr_overrides=None,
 ):
     model_class, model_config, use_timestamps = get_model_config(
         model_name, input_len, output_len, num_features, dataset_name, overrides=model_overrides
@@ -135,16 +135,16 @@ def run_experiment(
 
     callbacks = [EarlyStopping(patience=10)]
 
-    tcg_cfg = TCGConfig(
+    dpr_cfg = DPRConfig(
         enabled=True,
         num_patterns=8,
-        orth_lambda=tcg_overrides.get("orth_lambda", 0.01) if tcg_overrides else 0.01,
-        use_multiscale=tcg_overrides.get("use_multiscale", True) if tcg_overrides else True,
-        identity_init=tcg_overrides.get("identity_init", True) if tcg_overrides else True,
-        discrete_topk=tcg_overrides.get("discrete_topk", 1) if tcg_overrides else 1,
+        orth_lambda=dpr_overrides.get("orth_lambda", 0.01) if dpr_overrides else 0.01,
+        use_multiscale=dpr_overrides.get("use_multiscale", True) if dpr_overrides else True,
+        identity_init=dpr_overrides.get("identity_init", True) if dpr_overrides else True,
+        discrete_topk=dpr_overrides.get("discrete_topk", 1) if dpr_overrides else 1,
     )
-    if hasattr(model_config, "tcg"):
-        model_config.tcg = tcg_cfg
+    if hasattr(model_config, "dpr"):
+        model_config.dpr = dpr_cfg
 
     cfg = BasicTSForecastingConfig(
         model=model_class,
@@ -179,7 +179,7 @@ def worker(
     output_len,
     tag: str,
     model_overrides,
-    tcg_overrides,
+    dpr_overrides,
 ):
     gpu_id = None
     task_id = f"{tag} | {model_name} | {dataset_name} | {input_len}->{output_len}"
@@ -194,7 +194,7 @@ def worker(
             output_len,
             str(gpu_id),
             model_overrides=model_overrides,
-            tcg_overrides=tcg_overrides,
+            dpr_overrides=dpr_overrides,
         )
     except Exception as e:
         print(f"[Error] {task_id} failed: {e}")
@@ -222,7 +222,7 @@ if __name__ == "__main__":
     for model_name, dataset_name, num_features, input_len, output_len in RQ2_TASKS:
         for abl_cfg in ABLATION_CONFIGS:
             tag = f"RQ2_ABL_{abl_cfg['tag']}"
-            tcg_overrides = {
+            dpr_overrides = {
                 "orth_lambda": abl_cfg["orth_lambda"],
                 "use_multiscale": abl_cfg["use_multiscale"],
                 "identity_init": abl_cfg["identity_init"],
@@ -239,7 +239,7 @@ if __name__ == "__main__":
                     output_len,
                     tag,
                     None,
-                    tcg_overrides,
+                    dpr_overrides,
                 ),
             )
             p.start()

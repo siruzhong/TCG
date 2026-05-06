@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MoE vs TCM Comparison: Compare TCMNet and MoE-TCMNet on selected datasets.
+MoE vs DPR Comparison: Compare DPRNet and MoE-DPRNet on selected datasets.
 
 Datasets:
     - Illness (7 feat, 24->24/36/48/60)
@@ -8,8 +8,8 @@ Datasets:
     - ETTh1 (7 feat, 96->96/192/336/720)
 
 Models:
-    - TCMNet: Original with TCG
-    - MoE-TCMNet: MoE replacement for TCG
+    - DPRNet: Original with DPR
+    - MoE-DPRNet: MoE replacement for DPR
 """
 import os
 import sys
@@ -17,13 +17,13 @@ import time
 from multiprocessing import Process, Queue
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-CKPT_SAVE_DIR = os.path.join(script_dir, "checkpoints", "moe_vs_tcm")
+CKPT_SAVE_DIR = os.path.join(script_dir, "checkpoints", "moe_vs_dpr")
 src_dir = os.path.join(script_dir, "src")
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
-from basicts.models.TCMNet import TCMNetForForecasting, TCMNetConfig
-from basicts.models.MoETCMNet import MoETCMNetForForecasting, MoETCMNetConfig
+from basicts.models.DPRNet import DPRNetForForecasting, DPRNetConfig
+from basicts.models.MoEDPRNet import MoEDPRNetForForecasting, MoEDPRNetConfig
 from basicts.configs import BasicTSForecastingConfig
 from basicts.runners.callback import EarlyStopping, AddAuxiliaryLoss
 from basicts import BasicTSLauncher
@@ -59,8 +59,8 @@ def run_experiment(
     gpu_id,
     top_k=None,
 ):
-    if model_name == "TCMNet":
-        cfg = TCMNetConfig(
+    if model_name == "DPRNet":
+        cfg = DPRNetConfig(
             input_len=input_len,
             output_len=output_len,
             num_features=num_features,
@@ -70,7 +70,7 @@ def run_experiment(
             num_mlp_layers=2,
             mlp_expansion=2.0,
             mlp_dropout=0.1,
-            use_tcm=True,
+            use_dpr=True,
             num_patterns=8,
             use_multiscale=True,
             identity_init=True,
@@ -78,12 +78,12 @@ def run_experiment(
             head_dropout=0.0,
             use_revin=True,
         )
-        model_class = TCMNetForForecasting
+        model_class = DPRNetForForecasting
         callbacks = [EarlyStopping(patience=10)]
         if cfg.orth_lambda > 0:
-            callbacks.append(AddAuxiliaryLoss(losses=["tcg_orth"]))
-    elif model_name == "TCMNet_no_TCM":
-        cfg = TCMNetConfig(
+            callbacks.append(AddAuxiliaryLoss(losses=["dpr_orth"]))
+    elif model_name == "DPRNet_no_DPR":
+        cfg = DPRNetConfig(
             input_len=input_len,
             output_len=output_len,
             num_features=num_features,
@@ -93,7 +93,7 @@ def run_experiment(
             num_mlp_layers=2,
             mlp_expansion=2.0,
             mlp_dropout=0.1,
-            use_tcm=False,
+            use_dpr=False,
             num_patterns=8,
             use_multiscale=True,
             identity_init=True,
@@ -101,11 +101,11 @@ def run_experiment(
             head_dropout=0.0,
             use_revin=True,
         )
-        model_class = TCMNetForForecasting
+        model_class = DPRNetForForecasting
         callbacks = [EarlyStopping(patience=10)]
-    elif model_name.startswith("MoETCMNet"):
+    elif model_name.startswith("MoEDPRNet"):
         top_k_value = top_k if top_k is not None else 1
-        cfg = MoETCMNetConfig(
+        cfg = MoEDPRNetConfig(
             input_len=input_len,
             output_len=output_len,
             num_features=num_features,
@@ -122,7 +122,7 @@ def run_experiment(
             head_dropout=0.0,
             use_revin=True,
         )
-        model_class = MoETCMNetForForecasting
+        model_class = MoEDPRNetForForecasting
         callbacks = [EarlyStopping(patience=10)]
         if cfg.moe_loss_coef > 0:
             callbacks.append(AddAuxiliaryLoss(losses=["moe_loss"]))
@@ -195,7 +195,7 @@ if __name__ == "__main__":
 
     processes = []
     print(
-        f"MoE vs TCM comparison on GPUs {AVAILABLE_GPUS} "
+        f"MoE vs DPR comparison on GPUs {AVAILABLE_GPUS} "
         f"(up to {len(AVAILABLE_GPUS) * JOBS_PER_GPU} concurrent)"
     )
 
@@ -208,7 +208,7 @@ if __name__ == "__main__":
                 target=worker,
                 args=(
                     gpu_queue,
-                    "TCMNet_no_TCM",
+                    "DPRNet_no_DPR",
                     dataset_name,
                     num_features,
                     input_len,
@@ -226,7 +226,7 @@ if __name__ == "__main__":
                     target=worker,
                     args=(
                         gpu_queue,
-                        "MoETCMNet",
+                        "MoEDPRNet",
                         dataset_name,
                         num_features,
                         input_len,
@@ -241,9 +241,9 @@ if __name__ == "__main__":
 
     print(f"Scheduled {total_tasks} comparison experiments.")
     print(f"Datasets: {list(DATASET_CONFIGS.keys())}")
-    print(f"Models: TCMNet_no_TCM, MoETCMNet (top_k=1,2,4)")
+    print(f"Models: DPRNet_no_DPR, MoEDPRNet (top_k=1,2,4)")
 
     for p in processes:
         p.join()
 
-    print("All MoE vs TCM comparison experiments finished.")
+    print("All MoE vs DPR comparison experiments finished.")

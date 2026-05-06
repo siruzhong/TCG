@@ -8,7 +8,7 @@ src_dir = os.path.join(script_dir, 'src')
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
-from basicts.models.TCMNet import TCMNetForForecasting, TCMNetConfig
+from basicts.models.DPRNet import DPRNetForForecasting, DPRNetConfig
 from basicts.configs import BasicTSForecastingConfig
 from basicts.runners.callback import EarlyStopping
 from basicts import BasicTSLauncher
@@ -39,7 +39,7 @@ DATASET_CONFIGS = {
     "default":  {"input_lens": [96], "output_lens": [96, 192, 336, 720]},
 }
 
-# TCM-Net hyperparameter search grid (expanded)
+# DPR-Net hyperparameter search grid (expanded)
 NUM_PATTERNS_SEARCH = [4, 8]
 ORTH_LAMBDA_SEARCH = [1e-4]
 HIDDEN_SIZE_SEARCH = [64, 128, 256]
@@ -54,7 +54,7 @@ CHECKPOINT_BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chec
 
 def _check_results_exist(dataset_name, input_len, output_len, num_patterns, orth_lambda,
                          hidden_size, patch_len, mlp_expansion, num_mlp_layers, use_multiscale, identity_init):
-    base_dir = os.path.join(CHECKPOINT_BASE, "TCMNet", f"{dataset_name}_100_{input_len}_{output_len}")
+    base_dir = os.path.join(CHECKPOINT_BASE, "DPRNet", f"{dataset_name}_100_{input_len}_{output_len}")
     if not os.path.exists(base_dir):
         return False
 
@@ -104,7 +104,7 @@ def _format_value(x: float) -> str:
 def run_experiment(dataset_name, num_features, input_len, output_len, gpu_id,
                    num_patterns, orth_lambda, hidden_size, patch_len, mlp_expansion,
                    num_mlp_layers, use_multiscale, identity_init):
-    cfg = TCMNetConfig(
+    cfg = DPRNetConfig(
         input_len=input_len,
         output_len=output_len,
         num_features=num_features,
@@ -125,10 +125,10 @@ def run_experiment(dataset_name, num_features, input_len, output_len, gpu_id,
     callbacks = [EarlyStopping(patience=10)]
     if orth_lambda > 0:
         from basicts.runners.callback import AddAuxiliaryLoss
-        callbacks.append(AddAuxiliaryLoss(losses=["tcg_orth"]))
+        callbacks.append(AddAuxiliaryLoss(losses=["dpr_orth"]))
 
     basic_cfg = BasicTSForecastingConfig(
-        model=TCMNetForForecasting, model_config=cfg,
+        model=DPRNetForForecasting, model_config=cfg,
         dataset_name=dataset_name, input_len=input_len, output_len=output_len,
         use_timestamps=False, use_clean_targets=False,
         gpus=gpu_id, num_epochs=100, batch_size=64, callbacks=callbacks, seed=42,
@@ -154,7 +154,7 @@ def worker_task(
     identity_init,
 ):
     task_id = (
-        f"TCMNet | {dataset_name} | {input_len}->{output_len} | "
+        f"DPRNet | {dataset_name} | {input_len}->{output_len} | "
         f"K={num_patterns} orth={_format_value(orth_lambda)} hid={hidden_size} "
         f"patch={patch_len} mlp={mlp_expansion} layers={num_mlp_layers} "
         f"ms={use_multiscale} ident={identity_init}"
@@ -206,7 +206,7 @@ if __name__ == "__main__":
     processes = []
     max_concurrent = len(AVAILABLE_GPUS) * JOBS_PER_GPU
     print(
-        f"Scheduling TCM-Net tasks on GPUs {AVAILABLE_GPUS} "
+        f"Scheduling DPR-Net tasks on GPUs {AVAILABLE_GPUS} "
         f"(up to {max_concurrent} concurrent, JOBS_PER_GPU={JOBS_PER_GPU})"
     )
 
@@ -265,9 +265,9 @@ if __name__ == "__main__":
                                                 time.sleep(0.1)
                                                 total_tasks += 1
 
-    print(f"Scheduled {len(processes)} TCM-Net tasks")
+    print(f"Scheduled {len(processes)} DPR-Net tasks")
 
     for p in processes:
         p.join()
 
-    print("All TCM-Net experiments finished.")
+    print("All DPR-Net experiments finished.")

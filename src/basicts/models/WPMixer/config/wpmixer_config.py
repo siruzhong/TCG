@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from basicts.configs import BasicTSModelConfig, TCGConfig
+from basicts.configs import BasicTSModelConfig, DPRConfig
 
 
 @dataclass
@@ -27,7 +27,7 @@ class WPMixerConfig(BasicTSModelConfig):
     )
     use_amp: bool = field(default=False, metadata={"help": "Reserved for full DWT port."})
 
-    tcg: TCGConfig = field(default_factory=TCGConfig, metadata={"help": "Temporal-Contextual Gating options."})
+    dpr: DPRConfig = field(default_factory=DPRConfig, metadata={"help": "Dynamic Pattern Routing options."})
 
 
 __all__ = ["WPMixerConfig"]

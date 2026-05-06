@@ -6,7 +6,7 @@ from basicts.modules.decomposition import MovingAverageDecomposition
 from basicts.modules.embed import PatchEmbedding
 from basicts.modules.mlps import MLPLayer
 from basicts.modules.norm import RevIN
-from basicts.modules.tcg import TemporalContextualGating, tcg_orthogonal_loss
+from basicts.modules.dpr import TemporalContextualGating, dpr_orthogonal_loss
 from basicts.modules.transformer import (Encoder, EncoderLayer,
                                          MultiHeadAttention)
 from torch import nn
@@ -15,23 +15,23 @@ from ..config.patchtst_config import PatchTSTConfig
 from .patchtst_layers import PatchTSTBatchNorm, PatchTSTHead
 
 
-def _apply_tcg_bnpd(
+def _apply_dpr_bnpd(
     hidden_states: torch.Tensor,
-    tcg: Optional[TemporalContextualGating],
+    dpr: Optional[TemporalContextualGating],
     orth_lambda: float,
 ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-    """Reshape [B,N,P,d] -> TCG on [B*N,P,d] (conv along patch/time only) -> restore."""
+    """Reshape [B,N,P,d] -> DPR on [B*N,P,d] (conv along patch/time only) -> restore."""
     extra: Dict[str, torch.Tensor] = {}
-    if tcg is None:
+    if dpr is None:
         return hidden_states, extra
     b, n, p, d = hidden_states.shape
     flat = hidden_states.reshape(b * n, p, d)
-    flat, tcg_aux = tcg(flat, return_aux=True)
+    flat, dpr_aux = dpr(flat, return_aux=True)
     hidden_states = flat.reshape(b, n, p, d)
-    if tcg_aux and "routing_probs" in tcg_aux:
-        extra["routing_probs"] = tcg_aux["routing_probs"]
+    if dpr_aux and "routing_probs" in dpr_aux:
+        extra["routing_probs"] = dpr_aux["routing_probs"]
     if orth_lambda > 0:
-        extra["tcg_orth"] = orth_lambda * tcg_orthogonal_loss(tcg.mode_table)
+        extra["dpr_orth"] = orth_lambda * dpr_orthogonal_loss(dpr.mode_table)
     return hidden_states, extra
 
 
@@ -39,12 +39,12 @@ def _forecast_return(
     prediction: torch.Tensor,
     output_attentions: bool,
     attn_weights: Optional[List[torch.Tensor]],
-    tcg_extra: Dict[str, torch.Tensor],
+    dpr_extra: Dict[str, torch.Tensor],
 ):
     if output_attentions:
-        return {"prediction": prediction, "attn_weights": attn_weights, **tcg_extra}
-    if tcg_extra:
-        return {"prediction": prediction, **tcg_extra}
+        return {"prediction": prediction, "attn_weights": attn_weights, **dpr_extra}
+    if dpr_extra:
+        return {"prediction": prediction, **dpr_extra}
     return prediction
 
 
@@ -139,8 +139,8 @@ class PatchTSTForForecasting(nn.Module):
             self.revin = RevIN(
                 config.num_features, affine=config.affine, subtract_last=config.subtract_last)
         self.output_attentions = config.output_attentions
-        self.tcg_cfg = config.tcg
-        self.tcg = config.tcg.build_module(config.hidden_size)
+        self.dpr_cfg = config.dpr
+        self.dpr = config.dpr.build_module(config.hidden_size)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
 
@@ -163,14 +163,14 @@ class PatchTSTForForecasting(nn.Module):
             hidden_states = seasonal_hidden_states + trend_hidden_states
         else:
             hidden_states, attn_weights = self.backbone(inputs)
-        orth_lam = self.tcg_cfg.orth_lambda if self.tcg is not None else 0.0
-        hidden_states, tcg_extra = _apply_tcg_bnpd(hidden_states, self.tcg, orth_lam)
+        orth_lam = self.dpr_cfg.orth_lambda if self.dpr is not None else 0.0
+        hidden_states, dpr_extra = _apply_dpr_bnpd(hidden_states, self.dpr, orth_lam)
         hidden_states = self.flatten(hidden_states) # [batch_size, num_features, num_patches * hidden_size]
         # [batch_size, output_len, num_features]
         prediction = self.forecasting_head(hidden_states).transpose(1, 2)
         if self.use_revin:
             prediction = self.revin(prediction, "denorm")
-        return _forecast_return(prediction, self.output_attentions, attn_weights, tcg_extra)
+        return _forecast_return(prediction, self.output_attentions, attn_weights, dpr_extra)
 
 
 class PatchTSTForClassification(nn.Module):
@@ -191,8 +191,8 @@ class PatchTSTForClassification(nn.Module):
             self.revin = RevIN(
                 config.num_features, affine=config.affine, subtract_last=config.subtract_last)
         self.output_attentions = config.output_attentions
-        self.tcg_cfg = config.tcg
-        self.tcg = config.tcg.build_module(config.hidden_size)
+        self.dpr_cfg = config.dpr
+        self.dpr = config.dpr.build_module(config.hidden_size)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
 
@@ -210,14 +210,14 @@ class PatchTSTForClassification(nn.Module):
             inputs = self.revin(inputs, "norm")
         # [batch_size, num_features, num_patches, hidden_size]
         hidden_states, attn_weights = self.backbone(inputs)
-        orth_lam = self.tcg_cfg.orth_lambda if self.tcg is not None else 0.0
-        hidden_states, tcg_extra = _apply_tcg_bnpd(hidden_states, self.tcg, orth_lam)
+        orth_lam = self.dpr_cfg.orth_lambda if self.dpr is not None else 0.0
+        hidden_states, dpr_extra = _apply_dpr_bnpd(hidden_states, self.dpr, orth_lam)
         hidden_states = self.flatten(hidden_states) # [batch_size, num_features, num_patches * hidden_size]
         # [batch_size, output_len, num_features]
         prediction = self.forecasting_head(hidden_states).transpose(1, 2)
         if self.use_revin:
             prediction = self.revin(prediction, "denorm")
-        return _forecast_return(prediction, self.output_attentions, attn_weights, tcg_extra)
+        return _forecast_return(prediction, self.output_attentions, attn_weights, dpr_extra)
 
 
 class PatchTSTForReconstruction(nn.Module):
@@ -239,8 +239,8 @@ class PatchTSTForReconstruction(nn.Module):
             self.revin = RevIN(
                 config.num_features, affine=config.affine, subtract_last=config.subtract_last)
         self.output_attentions = config.output_attentions
-        self.tcg_cfg = config.tcg
-        self.tcg = config.tcg.build_module(config.hidden_size)
+        self.dpr_cfg = config.dpr
+        self.dpr = config.dpr.build_module(config.hidden_size)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
 
@@ -258,11 +258,11 @@ class PatchTSTForReconstruction(nn.Module):
             inputs = self.revin(inputs, "norm")
         # [batch_size, num_features, num_patches, hidden_size]
         hidden_states, attn_weights = self.backbone(inputs)
-        orth_lam = self.tcg_cfg.orth_lambda if self.tcg is not None else 0.0
-        hidden_states, tcg_extra = _apply_tcg_bnpd(hidden_states, self.tcg, orth_lam)
+        orth_lam = self.dpr_cfg.orth_lambda if self.dpr is not None else 0.0
+        hidden_states, dpr_extra = _apply_dpr_bnpd(hidden_states, self.dpr, orth_lam)
         hidden_states = self.flatten(hidden_states) # [batch_size, num_features, num_patches * hidden_size]
         # [batch_size, input_len, num_features]
         prediction = self.forecasting_head(hidden_states).transpose(1, 2)
         if self.use_revin:
             prediction = self.revin(prediction, "denorm")
-        return _forecast_return(prediction, self.output_attentions, attn_weights, tcg_extra)
+        return _forecast_return(prediction, self.output_attentions, attn_weights, dpr_extra)

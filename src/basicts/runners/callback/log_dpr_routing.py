@@ -8,8 +8,8 @@ if TYPE_CHECKING:
     from basicts.runners.basicts_runner import BasicTSRunner
 
 
-class LogTCGRouting(BasicTSCallback):
-    """Log TCG routing probability statistics during training."""
+class LogDPRRouting(BasicTSCallback):
+    """Log DPR routing probability statistics during training."""
 
     def __init__(self, log_interval: int = 1):
         super().__init__()
@@ -18,10 +18,10 @@ class LogTCGRouting(BasicTSCallback):
         self.routing_stats = []  # 用列表收集整个 Epoch 的数据
 
     def on_train_start(self, runner: "BasicTSRunner", *args, **kwargs) -> None:
-        self._patch_tcg(runner.model)
+        self._patch_dpr(runner.model)
 
-    def _patch_tcg(self, model):
-        from basicts.modules.tcg import TemporalContextualGating
+    def _patch_dpr(self, model):
+        from basicts.modules.dpr import TemporalContextualGating
 
         for name, module in model.named_modules():
             if isinstance(module, TemporalContextualGating):
@@ -46,7 +46,7 @@ class LogTCGRouting(BasicTSCallback):
             return
 
         if not self.routing_stats:
-            runner.logger.info(f"[Epoch {epoch}] TCG Routing: No routing captured yet")
+            runner.logger.info(f"[Epoch {epoch}] DPR Routing: No routing captured yet")
             return
 
         # 修复：拼接整个 Epoch 的所有 Batch，形状为 [Total_B, L, P]
@@ -80,19 +80,19 @@ class LogTCGRouting(BasicTSCallback):
         usage_per_pattern = routing.mean(axis=(0, 1))
         usage_std = usage_per_pattern.std()
 
-        runner.logger.info(f"[Epoch {epoch}] TCG Dynamic Switching Stats:")
+        runner.logger.info(f"[Epoch {epoch}] DPR Dynamic Switching Stats:")
         runner.logger.info(f"  --> Hard Switch Rate: {switch_rate*100:.2f}% of timesteps change active pattern.")
         runner.logger.info(f"  --> Soft Temporal Diff (L1): {mean_soft_diff:.4f} (Max 2.0)")
-        runner.logger.info(f"[Epoch {epoch}] TCG Confidence & Balance Stats:")
+        runner.logger.info(f"[Epoch {epoch}] DPR Confidence & Balance Stats:")
         runner.logger.info(f"  Uniformity (entropy/max): {timestep_entropy_mean/max_entropy:.4f}")
         runner.logger.info(f"  Routing confidence (>0.8): {consistency*100:.2f}%")
         runner.logger.info(f"  Usage std across patterns: {usage_std:.4f}")
         runner.logger.info(f"  Per-pattern usage: {[round(x, 4) for x in usage_per_pattern.tolist()]}")
 
     def on_train_end(self, runner: "BasicTSRunner", *args, **kwargs) -> None:
-        self._restore_tcg()
+        self._restore_dpr()
 
-    def _restore_tcg(self):
+    def _restore_dpr(self):
         for module in self._hooks:
             if hasattr(module, '_orig_forward'):
                 module.forward = module._orig_forward

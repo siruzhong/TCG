@@ -23,21 +23,21 @@ _MODEL_VARIANT_PARAMS = {
         "2xW": 3.75,
         "2xD": 1.87,
         "2xB": 6.90,
-        "+TCM": 1.10,
+        "+DPR": 1.10,
     },
     "iTransformer": {
         "Raw": 1.50,
         "2xW": 3.20,
         "2xD": 2.80,
         "2xB": 8.50,
-        "+TCM": 1.55,
+        "+DPR": 1.55,
     },
     "DLinear": {
         "Raw": 0.05,
         "2xW": 0.12,
         "2xD": 0.09,
         "2xB": 0.20,
-        "+TCM": 0.06,
+        "+DPR": 0.06,
     },
 }
 
@@ -49,21 +49,21 @@ _MSE = {
             "2xW": 0.405,
             "2xD": 0.401,
             "2xB": 0.398,
-            "+TCM": 0.385,
+            "+DPR": 0.385,
         },
         "iTransformer": {
             "Raw": 0.382,
             "2xW": 0.384,
             "2xD": 0.381,
             "2xB": 0.380,
-            "+TCM": 0.370,
+            "+DPR": 0.370,
         },
         "DLinear": {
             "Raw": 0.410,
             "2xW": 0.412,
             "2xD": 0.411,
             "2xB": 0.415,
-            "+TCM": 0.395,
+            "+DPR": 0.395,
         },
     },
     "Illness": {
@@ -72,21 +72,21 @@ _MSE = {
             "2xW": 0.68,
             "2xD": 0.66,
             "2xB": 0.67,
-            "+TCM": 0.56,
+            "+DPR": 0.56,
         },
         "iTransformer": {
             "Raw": 0.62,
             "2xW": 0.64,
             "2xD": 0.63,
             "2xB": 0.64,
-            "+TCM": 0.52,
+            "+DPR": 0.52,
         },
         "DLinear": {
             "Raw": 0.72,
             "2xW": 0.75,
             "2xD": 0.74,
             "2xB": 0.76,
-            "+TCM": 0.58,
+            "+DPR": 0.58,
         },
     },
     "Exchange": {
@@ -95,21 +95,21 @@ _MSE = {
             "2xW": 0.14,
             "2xD": 0.13,
             "2xB": 0.14,
-            "+TCM": 0.10,
+            "+DPR": 0.10,
         },
         "iTransformer": {
             "Raw": 0.11,
             "2xW": 0.12,
             "2xD": 0.11,
             "2xB": 0.12,
-            "+TCM": 0.09,
+            "+DPR": 0.09,
         },
         "DLinear": {
             "Raw": 0.15,
             "2xW": 0.16,
             "2xD": 0.15,
             "2xB": 0.16,
-            "+TCM": 0.12,
+            "+DPR": 0.12,
         },
     },
 }
@@ -137,8 +137,8 @@ data = _build_data()
 
 # Color = model, marker = variant
 colors = {"PatchTST": "#1f77b4", "iTransformer": "#2ca02c", "DLinear": "#d62728"}
-markers = {"Raw": "o", "2xW": "^", "2xD": "v", "2xB": "s", "+TCM": "*"}
-sizes = {"Raw": 50, "2xW": 50, "2xD": 50, "2xB": 50, "+TCM": 160}
+markers = {"Raw": "o", "2xW": "^", "2xD": "v", "2xB": "s", "+DPR": "*"}
+sizes = {"Raw": 50, "2xW": 50, "2xD": 50, "2xB": 50, "+DPR": 160}
 
 # Text labels "Model (variant)" next to points; set False if panels get crowded
 POINT_LABELS = True
@@ -180,12 +180,12 @@ variant_legend_handles = [
     Line2D(
         [0],
         [0],
-        marker=markers["+TCM"],
+        marker=markers["+DPR"],
         color="w",
         markerfacecolor="gold",
         markeredgecolor="black",
         markersize=7,
-        label="Ours (+TCM)",
+        label="Ours (+DPR)",
     ),
 ]
 
@@ -214,7 +214,7 @@ for ax, dname in zip(axes, dataset_order):
         raw_p, raw_m = variants["Raw"]
 
         for var_name, (p, m) in variants.items():
-            if var_name == "+TCM":
+            if var_name == "+DPR":
                 ax.scatter(
                     p,
                     m,
@@ -250,7 +250,7 @@ for ax, dname in zip(axes, dataset_order):
                         shrinkB=3,
                     ),
                 )
-            elif var_name == "+TCM":
+            elif var_name == "+DPR":
                 ax.annotate(
                     "",
                     xy=(p, m),
@@ -259,7 +259,7 @@ for ax, dname in zip(axes, dataset_order):
                 )
 
             if POINT_LABELS:
-                tag = "TCM" if var_name == "+TCM" else var_name
+                tag = "DPR" if var_name == "+DPR" else var_name
                 ox, oy = (3, 2.5) if p < 2.0 else (-11, 2.5)
                 ax.annotate(
                     f"{model} ({tag})",
@@ -317,5 +317,5 @@ axes[0].set_ylabel("MSE", fontweight="bold")
 for ax in axes:
     ax.set_xlabel("Parameters (M) — log scale", fontweight="bold")
 
-plt.savefig("scaling_vs_tcm.pdf", format="pdf", bbox_inches="tight", pad_inches=0.03)
+plt.savefig("scaling_vs_dpr.pdf", format="pdf", bbox_inches="tight", pad_inches=0.03)
 plt.show()

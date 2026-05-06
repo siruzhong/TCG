@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 import torch
 from torch import nn
 
-from basicts.modules.tcg import TemporalContextualGating, tcg_orthogonal_loss
+from basicts.modules.dpr import TemporalContextualGating, dpr_orthogonal_loss
 from ..config import WPMixerConfig
 
 
@@ -120,7 +120,7 @@ class ResolutionBranch(nn.Module):
         dfactor: int,
         patch_len: int,
         patch_stride: int,
-        tcg: Optional[TemporalContextualGating] = None,
+        dpr: Optional[TemporalContextualGating] = None,
     ):
         super().__init__()
         self.input_seq = input_seq
@@ -133,7 +133,7 @@ class ResolutionBranch(nn.Module):
         self.dfactor = dfactor
         self.patch_len = patch_len
         self.patch_stride = patch_stride
-        self.tcg = tcg
+        self.dpr = dpr
 
         self.patch_num = int((self.input_seq - self.patch_len) / self.patch_stride + 2)
 
@@ -183,10 +183,10 @@ class ResolutionBranch(nn.Module):
         out = res + self.mixer2(out)
         out = self.norm(out)
 
-        if self.tcg is not None:
+        if self.dpr is not None:
             out = out.reshape(-1, self.channel, self.patch_num, self.d_model)
             out = out.reshape(-1, self.channel * self.patch_num, self.d_model)
-            out = self.tcg(out)
+            out = self.dpr(out)
             out = out.reshape(-1, self.channel, self.patch_num, self.d_model)
 
         out = self.head(out)
@@ -209,7 +209,7 @@ class WPMixerCore(nn.Module):
         no_decomposition: bool,
         wavelet_name: str = "db2",
         use_amp: bool = False,
-        tcg: Optional[TemporalContextualGating] = None,
+        dpr: Optional[TemporalContextualGating] = None,
     ):
         super().__init__()
         self.input_length = input_length
@@ -223,7 +223,7 @@ class WPMixerCore(nn.Module):
         self.no_decomposition = no_decomposition
         self.wavelet_name = wavelet_name
         self.use_amp = use_amp
-        self.tcg = tcg
+        self.dpr = dpr
 
         self.Decomposition_model = _IdentityDecomposition(
             input_length=self.input_length,
@@ -249,7 +249,7 @@ class WPMixerCore(nn.Module):
                     dfactor=self.dfactor,
                     patch_len=self.patch_len,
                     patch_stride=self.patch_stride,
-                    tcg=self.tcg,
+                    dpr=self.dpr,
                 )
                 for i in range(len(self.input_w_dim))
             ]
@@ -278,8 +278,8 @@ class WPMixerForForecasting(nn.Module):
         super().__init__()
         self.output_len = config.output_len
         self.num_features = config.num_features
-        self.tcg_cfg = config.tcg
-        self.tcg = config.tcg.build_module(config.d_model)
+        self.dpr_cfg = config.dpr
+        self.dpr = config.dpr.build_module(config.d_model)
 
         self.wpmixerCore = WPMixerCore(
             input_length=config.input_len,
@@ -295,7 +295,7 @@ class WPMixerForForecasting(nn.Module):
             no_decomposition=config.no_decomposition,
             wavelet_name=config.wavelet_name,
             use_amp=config.use_amp,
-            tcg=self.tcg,
+            dpr=self.dpr,
         )
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
@@ -312,11 +312,11 @@ class WPMixerForForecasting(nn.Module):
         dec_out = pred * (stdev[:, 0].unsqueeze(1).repeat(1, self.output_len, 1))
         dec_out = dec_out + (means[:, 0].unsqueeze(1).repeat(1, self.output_len, 1))
 
-        tcg_extra: Dict[str, torch.Tensor] = {}
-        if self.tcg is not None and self.tcg_cfg.orth_lambda > 0:
-            tcg_extra["tcg_orth"] = self.tcg_cfg.orth_lambda * tcg_orthogonal_loss(self.tcg.mode_table)
-        if tcg_extra:
-            return {"prediction": dec_out, **tcg_extra}
+        dpr_extra: Dict[str, torch.Tensor] = {}
+        if self.dpr is not None and self.dpr_cfg.orth_lambda > 0:
+            dpr_extra["dpr_orth"] = self.dpr_cfg.orth_lambda * dpr_orthogonal_loss(self.dpr.mode_table)
+        if dpr_extra:
+            return {"prediction": dec_out, **dpr_extra}
         return dec_out
 
 

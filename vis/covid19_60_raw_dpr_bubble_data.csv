@@ -5,4 +5,4 @@ TimeMixer,2.041,0.668,534919,0.5349,2.0410,0.6685,/data/siruzhong/TCG/checkpoint
 TimeFilter,2.002,0.643,138556,0.1386,2.0021,0.6434,/data/siruzhong/TCG/checkpoints/TimeFilterForForecasting/COVID19_100_36_60/594d70da7f45ec8c0a29460e539f9762
 WPMixer,1.667,0.569,99660,0.0997,1.6671,0.5687,/data/siruzhong/TCG/checkpoints/WPMixerForForecasting/COVID19_100_36_60/d7f9bc06871accf82566b9d93ce9481c
 iTransformer,2.055,0.643,815164,0.8152,2.0555,0.6427,/data/siruzhong/TCG/checkpoints/iTransformerForForecasting/COVID19_100_36_60/ecf6d46d64f3d752d17ac8c73d7eb6a6
-TCMNet,1.653,0.571,110446,0.1104,1.6531,0.5706,/data/siruzhong/TCG/checkpoints/TCMNetForForecasting/COVID19_100_36_60/286f1cabd610bdf2b0ace7b317c7b2d7
+DPRNet,1.653,0.571,110446,0.1104,1.6531,0.5706,/data/siruzhong/TCG/checkpoints/DPRNetForForecasting/COVID19_100_36_60/286f1cabd610bdf2b0ace7b317c7b2d7

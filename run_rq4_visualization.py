@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-RQ4 Visualization: RAW vs TCG prediction comparison + regime analysis.
+RQ4 Visualization: RAW vs DPR prediction comparison + regime analysis.
 
 Layout (1 × 4):
-  (a) RAW baseline prediction   (b) TCG prediction
+  (a) RAW baseline prediction   (b) DPR prediction
   (c) Input signal + volatility (merged)   (d) Routing probabilities
 
 Usage:
@@ -69,7 +69,7 @@ def visualize_combined(
     input_seq,
     output_gt,
     raw_pred,
-    tcg_pred,
+    dpr_pred,
     routing_probs,
     save_path,
     figsize=(18, 3.0),
@@ -80,7 +80,7 @@ def visualize_combined(
     sample2_input=None,
     sample2_gt=None,
     sample2_raw=None,
-    sample2_tcg=None,
+    sample2_dpr=None,
 ):
     import pandas as pd
 
@@ -153,26 +153,26 @@ def visualize_combined(
         ax.plot(t_out, gt, color="#27AE60", linewidth=2.0, label="GT", zorder=4)
         if base is not None:
             ax.plot(t_out, base, color="#D62728", linewidth=2.0, ls="--", label="Baseline", zorder=5)
-        ax.plot(t_out, ours, color="#1F77B4", linewidth=2.0, ls="-", label="TCM", zorder=6)
+        ax.plot(t_out, ours, color="#1F77B4", linewidth=2.0, ls="-", label="DPR", zorder=6)
         ax.axvline(x=input_len_val - 1, color="#34495E", linestyle=":", lw=1.2, zorder=3)
         style_pred_ax(ax, title)
         ax.legend(loc="upper left", ncol=1, framealpha=0.9, edgecolor="gray", fontsize=10)
 
     # ==========================================
-    # (a) Sample 1: Baseline + TCG overlaid
+    # (a) Sample 1: Baseline + DPR overlaid
     # ==========================================
     ax = axes[0]
-    pred_panel(ax, input_seq, output_gt, raw_pred, tcg_pred, "(a) Prediction Comparison #1")
+    pred_panel(ax, input_seq, output_gt, raw_pred, dpr_pred, "(a) Prediction Comparison #1")
 
     # ==========================================
-    # (b) Sample 2: Baseline + TCG overlaid
+    # (b) Sample 2: Baseline + DPR overlaid
     # ==========================================
     ax = axes[1]
     inp2 = sample2_input if sample2_input is not None else input_seq
     gt2 = sample2_gt if sample2_gt is not None else output_gt
     raw2 = sample2_raw if sample2_raw is not None else raw_pred
-    tcg2 = sample2_tcg if sample2_tcg is not None else tcg_pred
-    pred_panel(ax, inp2, gt2, raw2, tcg2, "(b) Prediction Comparison #2")
+    dpr2 = sample2_dpr if sample2_dpr is not None else dpr_pred
+    pred_panel(ax, inp2, gt2, raw2, dpr2, "(b) Prediction Comparison #2")
 
     # ==========================================
     # (c) Input signal & volatility (merged)
@@ -275,9 +275,9 @@ class RoutingCaptor:
         self.routing_probs = []
         self._orig_forwards = {}
 
-    def _patch_tcg_forward(self, tcg_module):
-        from basicts.modules.tcg import TemporalContextualGating
-        orig_forward = tcg_module.forward
+    def _patch_dpr_forward(self, dpr_module):
+        from basicts.modules.dpr import TemporalContextualGating
+        orig_forward = dpr_module.forward
 
         def patched(x, return_aux=False):
             result, aux = orig_forward(x, return_aux=True)
@@ -287,40 +287,40 @@ class RoutingCaptor:
                 return result, aux
             return result
 
-        self._orig_forwards[id(tcg_module)] = orig_forward
-        tcg_module.forward = patched
+        self._orig_forwards[id(dpr_module)] = orig_forward
+        dpr_module.forward = patched
 
     def _restore(self):
-        from basicts.modules.tcg import TemporalContextualGating
+        from basicts.modules.dpr import TemporalContextualGating
         for name, module in self.model.named_modules():
             if isinstance(module, TemporalContextualGating) and id(module) in self._orig_forwards:
                 module.forward = self._orig_forwards[id(module)]
         self._orig_forwards.clear()
 
     def __enter__(self):
-        from basicts.modules.tcg import TemporalContextualGating
+        from basicts.modules.dpr import TemporalContextualGating
         for name, module in self.model.named_modules():
             if isinstance(module, TemporalContextualGating):
-                self._patch_tcg_forward(module)
+                self._patch_dpr_forward(module)
         return self
 
     def __exit__(self, *args):
         self._restore()
 
 
-def tcg_bypass_context(model):
+def dpr_bypass_context(model):
     class _BypassCtx:
         def __init__(self):
             self.orig_forwards = {}
         def __enter__(self):
-            from basicts.modules.tcg import TemporalContextualGating
+            from basicts.modules.dpr import TemporalContextualGating
             for name, module in model.named_modules():
                 if isinstance(module, TemporalContextualGating):
                     self.orig_forwards[id(module)] = module.forward
                     module.forward = lambda x, return_aux=False: (x, {})
             return self
         def __exit__(self, *args):
-            from basicts.modules.tcg import TemporalContextualGating
+            from basicts.modules.dpr import TemporalContextualGating
             for name, module in model.named_modules():
                 if isinstance(module, TemporalContextualGating) and id(module) in self.orig_forwards:
                     module.forward = self.orig_forwards[id(module)]
@@ -330,9 +330,9 @@ def tcg_bypass_context(model):
         self.routing_probs = []
         self._orig_forwards = {}
 
-    def _patch_tcg_forward(self, tcg_module):
-        from basicts.modules.tcg import TemporalContextualGating
-        orig_forward = tcg_module.forward
+    def _patch_dpr_forward(self, dpr_module):
+        from basicts.modules.dpr import TemporalContextualGating
+        orig_forward = dpr_module.forward
 
         def patched(x, return_aux=False):
             result, aux = orig_forward(x, return_aux=True)
@@ -342,21 +342,21 @@ def tcg_bypass_context(model):
                 return result, aux
             return result
 
-        self._orig_forwards[id(tcg_module)] = orig_forward
-        tcg_module.forward = patched
+        self._orig_forwards[id(dpr_module)] = orig_forward
+        dpr_module.forward = patched
 
     def _restore(self):
-        from basicts.modules.tcg import TemporalContextualGating
+        from basicts.modules.dpr import TemporalContextualGating
         for name, module in self.model.named_modules():
             if isinstance(module, TemporalContextualGating) and id(module) in self._orig_forwards:
                 module.forward = self._orig_forwards[id(module)]
         self._orig_forwards.clear()
 
     def __enter__(self):
-        from basicts.modules.tcg import TemporalContextualGating
+        from basicts.modules.dpr import TemporalContextualGating
         for name, module in self.model.named_modules():
             if isinstance(module, TemporalContextualGating):
-                self._patch_tcg_forward(module)
+                self._patch_dpr_forward(module)
         return self
 
     def __exit__(self, *args):
@@ -364,9 +364,9 @@ def tcg_bypass_context(model):
 
 
 def load_model_for_inference(checkpoint_path, input_len, output_len, num_features, k,
-                              tcg_enabled=True, device="cpu"):
+                              dpr_enabled=True, device="cpu"):
     from basicts.models.PatchTST import PatchTSTForForecasting, PatchTSTConfig
-    from basicts.configs import TCGConfig
+    from basicts.configs import DPRConfig
 
     ckpt = torch.load(checkpoint_path, map_location="cpu")
     if "model" in ckpt:
@@ -383,8 +383,8 @@ def load_model_for_inference(checkpoint_path, input_len, output_len, num_feature
         patch_len=16, patch_stride=8, hidden_size=256,
     )
 
-    if tcg_enabled:
-        cfg.tcg = TCGConfig(
+    if dpr_enabled:
+        cfg.dpr = DPRConfig(
             enabled=True, num_patterns=k, orth_lambda=0.0001,
             use_multiscale=False, identity_init=True, discrete_topk=1,
         )
@@ -452,20 +452,20 @@ def main():
     parser = argparse.ArgumentParser(description="RQ4 Visualization with prediction comparison")
     parser.add_argument("--checkpoint", type=str,
                         default="checkpoints/test_ablation/a849f714f87d07857a262cf8bd4b6e68/PatchTSTForForecasting_best_val_MAE.pt",
-                        help="Path to TCG model checkpoint")
+                        help="Path to DPR model checkpoint")
     parser.add_argument("--before_ckpt", type=str, default=None,
                         help="Path to RAW/baseline checkpoint for comparison")
     parser.add_argument("--before_npy", type=str, default=None,
                         help="Path to RAW directory with test_results/*.npy")
     parser.add_argument("--after_npy", type=str, default=None,
-                        help="Path to TCG directory with test_results/*.npy")
+                        help="Path to DPR directory with test_results/*.npy")
     parser.add_argument("--indices", type=int, nargs="+", default=None,
                         help="Sample indices for prediction panels (e.g. 1010 1210)")
     parser.add_argument("--dataset", type=str, default="ExchangeRate",
                         choices=["Sunspots", "Illness", "ExchangeRate"])
     parser.add_argument("--output", type=str, default="./vis", help="Output directory")
     parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test"])
-    parser.add_argument("--k", type=int, default=8, help="TCG num_patterns")
+    parser.add_argument("--k", type=int, default=8, help="DPR num_patterns")
     parser.add_argument("--input_len", type=int, default=None)
     parser.add_argument("--output_len", type=int, default=None)
     parser.add_argument("--samples", type=int, default=16,
@@ -496,20 +496,20 @@ def main():
         dataset=dataset, batch_size=args.samples, num_workers=0, shuffle=False,
     )
 
-    # Load TCG model
-    print(f"Loading TCG checkpoint: {args.checkpoint}")
-    tcg_model = load_model_for_inference(
+    # Load DPR model
+    print(f"Loading DPR checkpoint: {args.checkpoint}")
+    dpr_model = load_model_for_inference(
         args.checkpoint, input_len, output_len, num_features, args.k,
-        tcg_enabled=True, device=device,
+        dpr_enabled=True, device=device,
     )
 
-    print("Running TCG inference...")
-    ts_batch, tcg_preds, tgts_batch, routing_flat = run_inference_batch(
-        tcg_model, dataloader, device, capture_routing=True,
+    print("Running DPR inference...")
+    ts_batch, dpr_preds, tgts_batch, routing_flat = run_inference_batch(
+        dpr_model, dataloader, device, capture_routing=True,
     )
 
     if routing_flat is None:
-        print("ERROR: No routing captured. Is TCG enabled?")
+        print("ERROR: No routing captured. Is DPR enabled?")
         return
 
     B_total, L, N = ts_batch.shape
@@ -528,12 +528,12 @@ def main():
 
     raw_sel = ts_batch[best_b, :, best_f]
     rp_sel = routing_timestep[best_b, best_f]
-    tcg_pred_sel = tcg_preds[best_b, :, best_f]
+    dpr_pred_sel = dpr_preds[best_b, :, best_f]
     input_seq_sel = ts_batch[best_b, :, best_f]
     output_gt_sel = tgts_batch[best_b, :, best_f] if tgts_batch is not None else np.zeros(output_len)
     routing_vis = rp_sel.T
 
-    # Load RAW / TCG predictions from npy files (if provided), else fallback to bypass
+    # Load RAW / DPR predictions from npy files (if provided), else fallback to bypass
     raw_pred_sel = None
     raw_preds = None
     if args.before_npy and args.after_npy:
@@ -556,14 +556,14 @@ def main():
             return _load("inputs"), _load("prediction"), _load("targets")
 
         inp_npy, raw_preds_npy, _ = _load_preds_npy(args.before_npy, input_len, output_len, num_features)
-        _, tcg_preds_npy, tgt_npy = _load_preds_npy(args.after_npy, input_len, output_len, num_features)
+        _, dpr_preds_npy, tgt_npy = _load_preds_npy(args.after_npy, input_len, output_len, num_features)
         best_f = 0
         raw_preds = raw_preds_npy
-        tcg_preds = tcg_preds_npy
+        dpr_preds = dpr_preds_npy
         raw_input_data = inp_npy
 
         mae_b = np.mean(np.abs(raw_preds[:, :, best_f] - tgt_npy[:, :, best_f]), axis=1)
-        mae_a = np.mean(np.abs(tcg_preds[:, :, best_f] - tgt_npy[:, :, best_f]), axis=1)
+        mae_a = np.mean(np.abs(dpr_preds[:, :, best_f] - tgt_npy[:, :, best_f]), axis=1)
         improvement = (mae_b - mae_a) / (mae_b + 1e-9)
 
         if args.indices:
@@ -579,20 +579,20 @@ def main():
 
         raw_pred_sel = raw_preds[best_b, :, best_f]
         raw_pred2 = raw_preds[best_b2, :, best_f] if best_b2 != best_b else raw_pred_sel
-        tcg_pred_sel = tcg_preds[best_b, :, best_f]
-        tcg_pred2 = tcg_preds[best_b2, :, best_f] if best_b2 != best_b else tcg_pred_sel
+        dpr_pred_sel = dpr_preds[best_b, :, best_f]
+        dpr_pred2 = dpr_preds[best_b2, :, best_f] if best_b2 != best_b else dpr_pred_sel
         output_gt_sel = tgt_npy[best_b, :, best_f]
         output_gt2 = tgt_npy[best_b2, :, best_f] if best_b2 != best_b else output_gt_sel
         input_seq_sel = raw_input_data[best_b, :, best_f]
         input_seq2 = raw_input_data[best_b2, :, best_f] if best_b2 != best_b else input_seq_sel
     else:
-        print("Running RAW inference (TCG bypassed)...")
+        print("Running RAW inference (DPR bypassed)...")
         all_raw_preds = []
-        with tcg_bypass_context(tcg_model):
+        with dpr_bypass_context(dpr_model):
             for batch in dataloader:
                 inputs = batch["inputs"].to(device)
                 with torch.no_grad():
-                    output = tcg_model(inputs)
+                    output = dpr_model(inputs)
                 pred = output["prediction"].cpu().numpy()
                 all_raw_preds.append(pred)
         raw_preds = np.concatenate(all_raw_preds, axis=0)
@@ -605,7 +605,7 @@ def main():
         best_b2 = best_b
     input_seq2 = ts_batch[best_b2, :, best_f]
     output_gt2 = tgts_batch[best_b2, :, best_f] if tgts_batch is not None else np.zeros(output_len)
-    tcg_pred2 = tcg_preds[best_b2, :, best_f]
+    dpr_pred2 = dpr_preds[best_b2, :, best_f]
     raw_pred2 = raw_preds[best_b2, :, best_f] if raw_preds is not None else None
 
     raw_min, raw_max = raw_sel.min(), raw_sel.max()
@@ -618,14 +618,14 @@ def main():
         "Sunspots": "sunspots", "Illness": "ili", "ExchangeRate": "exchange",
     }
     prefix = prefix_map.get(args.dataset, args.dataset.lower())
-    save_path = os.path.join(args.output, f"{prefix}_tcm_routing")
+    save_path = os.path.join(args.output, f"{prefix}_dpr_routing")
 
     visualize_combined(
         raw_norm,
         input_seq_sel,
         output_gt_sel,
         raw_pred_sel,
-        tcg_pred_sel,
+        dpr_pred_sel,
         routing_vis,
         save_path,
         figsize=(args.fig_w, args.fig_h),
@@ -635,7 +635,7 @@ def main():
         sample2_input=input_seq2,
         sample2_gt=output_gt2,
         sample2_raw=raw_pred2,
-        sample2_tcg=tcg_pred2,
+        sample2_dpr=dpr_pred2,
     )
 
     print(f"\n=== Visualization Complete ===")

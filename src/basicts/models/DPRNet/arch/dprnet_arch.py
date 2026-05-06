@@ -3,15 +3,15 @@ from typing import Dict, Optional
 import torch
 from basicts.modules.embed import PatchEmbedding
 from basicts.modules.norm import RevIN
-from basicts.modules.tcg import TemporalContextualGating, tcg_orthogonal_loss
+from basicts.modules.dpr import TemporalContextualGating, dpr_orthogonal_loss
 from torch import nn
 
-from ..config.tcmnet_config import TCMNetConfig
+from ..config.dprnet_config import DPRNetConfig
 
 
-class TCMBlock(nn.Module):
+class DPRBlock(nn.Module):
     
-    def __init__(self, config: TCMNetConfig):
+    def __init__(self, config: DPRNetConfig):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
@@ -38,9 +38,9 @@ class TCMBlock(nn.Module):
         
         self.base_mapping = nn.Sequential(*mlp_layers)
         
-        self.use_tcm = getattr(config, 'use_tcm', True)
-        if self.use_tcm:
-            self.tcm = TemporalContextualGating(
+        self.use_dpr = getattr(config, 'use_dpr', True)
+        if self.use_dpr:
+            self.dpr = TemporalContextualGating(
                 d_model=config.hidden_size,
                 num_patterns=config.num_patterns,
                 use_multiscale=config.use_multiscale,
@@ -57,8 +57,8 @@ class TCMBlock(nn.Module):
         x = x + residual
         
         x = self.norm2(x)
-        if self.use_tcm:
-            x, aux = self.tcm(x, return_aux=return_aux)
+        if self.use_dpr:
+            x, aux = self.dpr(x, return_aux=return_aux)
         else:
             aux = None
         
@@ -67,9 +67,9 @@ class TCMBlock(nn.Module):
         return x
 
 
-class TCMNetBackbone(nn.Module):
+class DPRNetBackbone(nn.Module):
     
-    def __init__(self, config: TCMNetConfig):
+    def __init__(self, config: DPRNetConfig):
         super().__init__()
         self.config = config
         self.num_features = config.num_features
@@ -88,12 +88,12 @@ class TCMNetBackbone(nn.Module):
             self.num_patches += 1
         self.seq_len = self.num_patches
         
-        self.tcm_block = TCMBlock(config)
+        self.dpr_block = DPRBlock(config)
     
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         hidden_states = self.embedding(inputs)
         
-        hidden_states, aux = self.tcm_block(hidden_states, return_aux=True)
+        hidden_states, aux = self.dpr_block(hidden_states, return_aux=True)
         
         hidden_states = hidden_states.reshape(
             -1, self.num_features, self.seq_len, self.hidden_size
@@ -102,7 +102,7 @@ class TCMNetBackbone(nn.Module):
         return hidden_states, aux
 
 
-class TCMNetHead(nn.Module):
+class DPRNetHead(nn.Module):
     
     def __init__(
         self,
@@ -145,9 +145,9 @@ class TCMNetHead(nn.Module):
         return x
 
 
-class TCMNetForForecasting(nn.Module):
+class DPRNetForForecasting(nn.Module):
     
-    def __init__(self, config: TCMNetConfig):
+    def __init__(self, config: DPRNetConfig):
         super().__init__()
         self.config = config
         
@@ -159,10 +159,10 @@ class TCMNetForForecasting(nn.Module):
                 subtract_last=config.subtract_last
             )
         
-        self.backbone = TCMNetBackbone(config)
+        self.backbone = DPRNetBackbone(config)
         
         self.flatten = nn.Flatten(start_dim=-2)
-        self.head = TCMNetHead(
+        self.head = DPRNetHead(
             input_size=self.backbone.seq_len * config.hidden_size,
             output_size=config.output_len,
             individual=config.individual_head,
@@ -192,9 +192,9 @@ class TCMNetForForecasting(nn.Module):
         if aux and "routing_probs" in aux:
             output["routing_probs"] = aux["routing_probs"]
         
-        if self.orth_lambda > 0 and self.backbone.tcm_block.use_tcm:
-            output["tcg_orth"] = self.orth_lambda * tcg_orthogonal_loss(
-                self.backbone.tcm_block.tcm.mode_table
+        if self.orth_lambda > 0 and self.backbone.dpr_block.use_dpr:
+            output["dpr_orth"] = self.orth_lambda * dpr_orthogonal_loss(
+                self.backbone.dpr_block.dpr.mode_table
             )
         
         return output

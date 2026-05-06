@@ -1,7 +1,7 @@
 """
-Non-TCG baselines: one run per (model, dataset, input_len, output_len) with default model
+Non-DPR baselines: one run per (model, dataset, input_len, output_len) with default model
 configs. No hyperparameter search. Skip if that exact training (same config hash) already
-finished — uses the launcher’s `cfg.md5` subfolder, not any TCG-specific fields in cfg.
+finished — uses the launcher’s `cfg.md5` subfolder, not any DPR-specific fields in cfg.
 """
 import sys
 import os

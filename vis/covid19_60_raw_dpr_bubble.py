@@ -1,13 +1,13 @@
 """Build bubble chart for COVID19 horizon=60 (raw-only).
 
-Scenario picked to highlight TCMNet strengths among raw baselines:
-- lowest MSE in `tcg_result.md` at COVID19 / 60
+Scenario picked to highlight DPRNet strengths among raw baselines:
+- lowest MSE in `dpr_result.md` at COVID19 / 60
 - small parameter count (near the smallest group)
 
 Outputs:
-- vis/covid19_60_raw_tcm_bubble_data.csv
-- vis/covid19_60_raw_tcm_bubble.png
-- vis/covid19_60_raw_tcm_bubble.pdf
+- vis/covid19_60_raw_dpr_bubble_data.csv
+- vis/covid19_60_raw_dpr_bubble.png
+- vis/covid19_60_raw_dpr_bubble.pdf
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TCG_RESULT_MD = os.path.join(REPO_ROOT, "tcg_result.md")
+DPR_RESULT_MD = os.path.join(REPO_ROOT, "dpr_result.md")
 CHECKPOINTS = os.path.join(REPO_ROOT, "checkpoints")
 
 DATASET = "COVID19"
@@ -39,7 +39,7 @@ MODELS = [
     "TimeFilter",
     "WPMixer",
     "iTransformer",
-    "TCMNet",
+    "DPRNet",
 ]
 
 SPLIT_MODELS = {
@@ -78,8 +78,8 @@ def _parse_metric_cell(cell: str) -> tuple[float, float]:
     return float(m.group(1)), float(m.group(2))
 
 
-def _parse_tcg_table_row() -> dict[str, str]:
-    with open(TCG_RESULT_MD, "r", encoding="utf-8") as f:
+def _parse_dpr_table_row() -> dict[str, str]:
+    with open(DPR_RESULT_MD, "r", encoding="utf-8") as f:
         lines = [ln.rstrip("\n") for ln in f]
 
     header = None
@@ -97,11 +97,11 @@ def _parse_tcg_table_row() -> dict[str, str]:
     return dict(zip(header, row))
 
 
-def _is_tcg_enabled(cfg: dict) -> bool:
-    tcg = cfg.get("model_config", {}).get("tcg", {})
-    if not isinstance(tcg, dict):
+def _is_dpr_enabled(cfg: dict) -> bool:
+    dpr = cfg.get("model_config", {}).get("dpr", {})
+    if not isinstance(dpr, dict):
         return False
-    params = tcg.get("params", {}) or {}
+    params = dpr.get("params", {}) or {}
     return str(params.get("enabled", "False")).lower() == "true"
 
 
@@ -150,7 +150,7 @@ def _find_raw_point(model: str, target_mse: float, target_mae: float) -> Point:
         except Exception:
             continue
 
-        if model in SPLIT_MODELS and _is_tcg_enabled(cfg):
+        if model in SPLIT_MODELS and _is_dpr_enabled(cfg):
             continue
 
         try:
@@ -190,10 +190,10 @@ def _find_raw_point(model: str, target_mse: float, target_mae: float) -> Point:
 
 
 def _collect_points() -> list[Point]:
-    row = _parse_tcg_table_row()
+    row = _parse_dpr_table_row()
     points: list[Point] = []
     for model in MODELS:
-        col = model if model in {"iTransformer", "TCMNet"} else f"{model}_raw"
+        col = model if model in {"iTransformer", "DPRNet"} else f"{model}_raw"
         mse, mae = _parse_metric_cell(row[col])
         points.append(_find_raw_point(model, mse, mae))
     return points
@@ -240,7 +240,7 @@ def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
         "TimeFilter": "#c49c94",
         "WPMixer": "#f7b6d2",
         "iTransformer": "#969696",
-        "TCMNet": "#d62728", 
+        "DPRNet": "#d62728", 
     }
 
     fig, ax = plt.subplots(figsize=(8, 5), dpi=300)
@@ -268,14 +268,14 @@ def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
         "TimeFilter": {"xytext": (0, 18), "ha": "center", "va": "bottom"}, 
         "WPMixer": {"xytext": (14, 12), "ha": "left", "va": "bottom"},
         "iTransformer": {"xytext": (0, 16), "ha": "center", "va": "bottom"},
-        "TCMNet": {"xytext": (14, -14), "ha": "left", "va": "top"},      
+        "DPRNet": {"xytext": (14, -14), "ha": "left", "va": "top"},      
     }
 
     annotations = []
     for p in points:
         x = p.params / 1e6
         y = p.mse
-        is_ours = (p.model == "TCMNet")
+        is_ours = (p.model == "DPRNet")
         
         marker = "*" if is_ours else "o"
         # 【优化项】：气泡显著放大 (160->500, 600->900)
@@ -376,9 +376,9 @@ def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
     plt.close(fig)
     
 def main() -> None:
-    out_csv = os.path.join(REPO_ROOT, "vis", "covid19_60_raw_tcm_bubble_data.csv")
-    out_png = os.path.join(REPO_ROOT, "vis", "covid19_60_raw_tcm_bubble.png")
-    out_pdf = os.path.join(REPO_ROOT, "vis", "covid19_60_raw_tcm_bubble.pdf")
+    out_csv = os.path.join(REPO_ROOT, "vis", "covid19_60_raw_dpr_bubble_data.csv")
+    out_png = os.path.join(REPO_ROOT, "vis", "covid19_60_raw_dpr_bubble.png")
+    out_pdf = os.path.join(REPO_ROOT, "vis", "covid19_60_raw_dpr_bubble.pdf")
 
     points = _collect_points()
     _save_csv(points, out_csv)

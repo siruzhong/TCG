@@ -1,6 +1,6 @@
 from .base_config import BasicTSConfig
 from .model_config import BasicTSModelConfig
-from .tcg_config import TCGConfig
+from .dpr_config import DPRConfig
 from .tsc_config import BasicTSClassificationConfig
 from .tsf_config import BasicTSForecastingConfig
 from .tsfm_config import BasicTSFoundationModelConfig
@@ -12,4 +12,4 @@ __ALL__ = ['BasicTSConfig',
            'BasicTSImputationConfig',
            'BasicTSFoundationModelConfig',
            'BasicTSModelConfig',
-           'TCGConfig']
+           'DPRConfig']

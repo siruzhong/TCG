@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from basicts.configs import BasicTSModelConfig, TCGConfig
+from basicts.configs import BasicTSModelConfig, DPRConfig
 
 
 @dataclass
@@ -23,4 +23,4 @@ class CrossformerConfig(BasicTSModelConfig):
     hidden_act: str = field(default="gelu", metadata={"help": "Activation function."})
     dropout: float = field(default=0.05, metadata={"help": "Dropout rate."})
     baseline: bool = field(default=False, metadata={"help": "Whether to add an averaged input to prediction."})
-    tcg: TCGConfig = field(default_factory=TCGConfig, metadata={"help": "Temporal-Contextual Gating options."})
+    dpr: DPRConfig = field(default_factory=DPRConfig, metadata={"help": "Dynamic Pattern Routing options."})

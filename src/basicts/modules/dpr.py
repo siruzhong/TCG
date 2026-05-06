@@ -1,4 +1,4 @@
-"""Temporal-Contextual Gating (TCG): adaptive per-position modulation via local dynamics."""
+"""Dynamic Pattern Routing (DPR): adaptive per-position modulation via local dynamics."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch import nn
 
 
-def tcg_orthogonal_loss(mode_table: torch.Tensor) -> torch.Tensor:
+def dpr_orthogonal_loss(mode_table: torch.Tensor) -> torch.Tensor:
     """
     Encourage rows of mode_table (K x d) to be orthonormal in expectation.
 

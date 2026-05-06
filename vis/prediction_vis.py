@@ -7,17 +7,17 @@ from pathlib import Path
 import argparse
 
 # ==========================================
-# TCG Visualization Script
+# DPR Visualization Script
 # ==========================================
-# Visualize TCG model forecasts vs ground truth (and RAW vs TCG comparisons).
+# Visualize DPR model forecasts vs ground truth (and RAW vs DPR comparisons).
 #
-# Example dataset / model pairs (see tcg_result.md):
+# Example dataset / model pairs (see dpr_result.md):
 #   1. TimesNet + Illness — strong seasonality, large gains
 #   2. TimeMixer + Weather — stable gains, many features for plots
 #   3. Informer + ETTm2 / ETTh2 — large gains but noisier series
 #
 # Examples:
-#   # Comparison: RAW vs TCG (random samples with >30% improvement)
+#   # Comparison: RAW vs DPR (random samples with >30% improvement)
 #   python prediction_vis.py \
 #     --before ../checkpoints_old/Informer/ExchangeRate_100_96_96/1814d14edc8c6ef91fb05b73b0b47a82 \
 #     --after ../checkpoints_old/Informer/ExchangeRate_100_96_96/a6a6366d9c46c0535fd10bfe825b747b \
@@ -29,8 +29,8 @@ import argparse
 #     --after ../checkpoints_old/Informer/ExchangeRate_100_96_96/a6a6366d9c46c0535fd10bfe825b747b \
 #     --feat 0 --indices 1010 1210 1041 711
 #
-#   # Single run: TCG predictions vs targets
-#   python prediction_vis.py --tcg ../checkpoints/TimesNetForForecasting/ETTm1_100_96_720/xxx
+#   # Single run: DPR predictions vs targets
+#   python prediction_vis.py --dpr ../checkpoints/TimesNetForForecasting/ETTm1_100_96_720/xxx
 #
 # ==========================================
 # 1. Global plot style (matches run_rq4_visualization.py)
@@ -80,7 +80,7 @@ def load_test_results(result_dir):
     cfg_file = result_dir / "cfg.json"
     input_len, output_len, num_features = 96, 96, 7
     model_name = "Unknown"
-    tcg_enabled = "False"
+    dpr_enabled = "False"
     num_patterns = "N/A"
     
     if cfg_file.exists():
@@ -91,10 +91,10 @@ def load_test_results(result_dir):
             output_len = model_cfg.get("output_len", 96)
             num_features = model_cfg.get("num_features", 7)
             model_name = cfg.get("model", {}).get("name", "Unknown")
-            tcg_cfg = model_cfg.get("tcg", {})
-            tcg_params = tcg_cfg.get("params", {})
-            tcg_enabled = tcg_params.get("enabled", "False")
-            num_patterns = tcg_params.get("num_patterns", "N/A")
+            dpr_cfg = model_cfg.get("dpr", {})
+            dpr_params = dpr_cfg.get("params", {})
+            dpr_enabled = dpr_params.get("enabled", "False")
+            num_patterns = dpr_params.get("num_patterns", "N/A")
     
     def load_npy(name):
         path = test_results_dir / f"{name}.npy"
@@ -114,7 +114,7 @@ def load_test_results(result_dir):
 
     return load_npy("inputs"), load_npy("prediction"), load_npy("targets"), {
         'model_name': model_name,
-        'tcg_enabled': tcg_enabled,
+        'dpr_enabled': dpr_enabled,
         'num_patterns': num_patterns,
         'input_len': input_len,
         'output_len': output_len,
@@ -122,12 +122,12 @@ def load_test_results(result_dir):
     }
 
 # ==========================================
-# 3. Plot TCG predictions
+# 3. Plot DPR predictions
 # ==========================================
-def plot_tcg_predictions(tc_dir, output_path, feat_idx=0, num_samples=4, 
+def plot_dpr_predictions(tc_dir, output_path, feat_idx=0, num_samples=4, 
                         selection='high_error', show_error_band=True):
     """
-    Plot TCG forecasts for selected test samples.
+    Plot DPR forecasts for selected test samples.
 
     Args:
         tc_dir: Checkpoint directory with test_results/*.npy
@@ -147,7 +147,7 @@ def plot_tcg_predictions(tc_dir, output_path, feat_idx=0, num_samples=4,
     inputs, predictions, targets, info = load_test_results(tc_dir)
     
     print(f"Model: {info['model_name']}")
-    print(f"TCG enabled: {info['tcg_enabled']}, num_patterns: {info['num_patterns']}")
+    print(f"DPR enabled: {info['dpr_enabled']}, num_patterns: {info['num_patterns']}")
     print(f"Data shape: inputs={inputs.shape}, predictions={predictions.shape}, targets={targets.shape}")
     
     mae_per_sample = np.mean(np.abs(predictions[:, :, feat_idx] - targets[:, :, feat_idx]), axis=1)
@@ -218,14 +218,14 @@ def plot_tcg_predictions(tc_dir, output_path, feat_idx=0, num_samples=4,
         ax.legend(**subplot_legend_kw(loc=leg_loc))
 
     model_info_text = f"Model: {info['model_name']}"
-    if info['tcg_enabled'].lower() == 'true':
-        model_info_text += f" | TCG (K={info['num_patterns']})"
+    if info['dpr_enabled'].lower() == 'true':
+        model_info_text += f" | DPR (K={info['num_patterns']})"
     fig.suptitle(model_info_text, y=1.02, style="italic")
 
     out_dir = Path(output_path)
     out_dir.mkdir(parents=True, exist_ok=True)
     
-    filename = f'tcg_prediction_{info["model_name"]}_feat{feat_idx}.pdf'
+    filename = f'dpr_prediction_{info["model_name"]}_feat{feat_idx}.pdf'
     plt.savefig(out_dir / filename, bbox_inches='tight', dpi=300)
     print(f"Success! Visualized samples: {indices}")
     print(f"Results saved to: {out_dir / filename}")
@@ -287,7 +287,7 @@ def plot_error_analysis(tc_dir, output_path, feat_idx=0, num_bins=50):
     out_dir = Path(output_path)
     out_dir.mkdir(parents=True, exist_ok=True)
     
-    filename = f'tcg_error_analysis_{info["model_name"]}_feat{feat_idx}.pdf'
+    filename = f'dpr_error_analysis_{info["model_name"]}_feat{feat_idx}.pdf'
     plt.savefig(out_dir / filename, bbox_inches='tight', dpi=300)
     print(f"Error analysis saved to: {out_dir / filename}")
 
@@ -341,26 +341,26 @@ def plot_multifeature_comparison(tc_dir, output_path, num_features_shown=4):
     
     out_dir = Path(output_path)
     out_dir.mkdir(parents=True, exist_ok=True)
-    filename = f'tcg_multifeature_{info["model_name"]}.pdf'
+    filename = f'dpr_multifeature_{info["model_name"]}.pdf'
     plt.savefig(out_dir / filename, bbox_inches='tight', dpi=300)
     print(f"Multi-feature visualization saved to: {out_dir / filename}")
 
 # ==========================================
-# 6. RAW vs TCG comparison
+# 6. RAW vs DPR comparison
 # ==========================================
 def plot_comparison(before_dir, after_dir, output_path, feat_idx=0, threshold=30, fixed_indices=None):
-    """Compare baseline (before) vs TCG (after); sample by relative MAE improvement."""
+    """Compare baseline (before) vs DPR (after); sample by relative MAE improvement."""
     set_academic_style()
     
     print(f"Loading RAW from: {before_dir}")
-    print(f"Loading TCG from: {after_dir}")
+    print(f"Loading DPR from: {after_dir}")
     
     in_b, pred_b, tar_b, info_b = load_test_results(before_dir)
     in_a, pred_a, tar_a, info_a = load_test_results(after_dir)
     
-    print(f"RAW: {info_b['model_name']}, TCG: {info_a['model_name']}")
+    print(f"RAW: {info_b['model_name']}, DPR: {info_a['model_name']}")
     print(f"RAW shape: inputs={in_b.shape}, pred={pred_b.shape}, tar={tar_b.shape}")
-    print(f"TCG shape: inputs={in_a.shape}, pred={pred_a.shape}, tar={tar_a.shape}")
+    print(f"DPR shape: inputs={in_a.shape}, pred={pred_a.shape}, tar={tar_a.shape}")
     
     mae_b = np.mean(np.abs(pred_b[:, :, feat_idx] - tar_b[:, :, feat_idx]), axis=1)
     mae_a = np.mean(np.abs(pred_a[:, :, feat_idx] - tar_a[:, :, feat_idx]), axis=1)
@@ -398,7 +398,7 @@ def plot_comparison(before_dir, after_dir, output_path, feat_idx=0, threshold=30
         ax.plot(t_in, seq_in, color=colors['in'], label='Input', lw=1.5, alpha=0.5)
         ax.plot(t_out, seq_gt, color=colors['gt'], label='GT', lw=2.0)
         ax.plot(t_out, seq_base, color=colors['base'], label='Baseline', lw=2.0, ls='--')
-        ax.plot(t_out, seq_ours, color=colors['ours'], label='TCM', lw=2.0, ls='-')
+        ax.plot(t_out, seq_ours, color=colors['ours'], label='DPR', lw=2.0, ls='-')
         
         ax.axvline(x=L_in-1, color='#34495E', linestyle=':', lw=1.2)
         imp_pct = improvement[idx] * 100
@@ -426,12 +426,12 @@ def plot_comparison(before_dir, after_dir, output_path, feat_idx=0, threshold=30
 # Main
 # ==========================================
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='TCG Visualization Tool')
+    parser = argparse.ArgumentParser(description='DPR Visualization Tool')
     
     parser.add_argument('--before', type=str, help='RAW/Baseline checkpoint directory')
-    parser.add_argument('--after', type=str, help='TCG checkpoint directory')
+    parser.add_argument('--after', type=str, help='DPR checkpoint directory')
 
-    parser.add_argument('--tcg', type=str, help='TCG checkpoint directory (single-model mode)')
+    parser.add_argument('--dpr', type=str, help='DPR checkpoint directory (single-model mode)')
     
     parser.add_argument('--output', type=str, default='./', help='Output directory')
     parser.add_argument('--feat', type=int, default=0, help='Feature index to visualize')
@@ -452,11 +452,11 @@ if __name__ == "__main__":
     
     if args.before and args.after:
         plot_comparison(args.before, args.after, args.output, args.feat, args.threshold, args.indices)
-    elif args.tcg:
-        plot_tcg_predictions(args.tcg, args.output, args.feat, args.samples, args.selection, 
+    elif args.dpr:
+        plot_dpr_predictions(args.dpr, args.output, args.feat, args.samples, args.selection, 
                             args.show_error_band)
     else:
         parser.print_help()
         print("\nUsage:")
-        print("  1. Compare: --before <raw_dir> --after <tcg_dir>")
-        print("  2. Single model: --tcg <tcg_dir>")
+        print("  1. Compare: --before <raw_dir> --after <dpr_dir>")
+        print("  2. Single model: --dpr <dpr_dir>")

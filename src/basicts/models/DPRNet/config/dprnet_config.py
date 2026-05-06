@@ -1,16 +1,15 @@
 from dataclasses import dataclass, field
 
-from basicts.configs import BasicTSModelConfig
+from basicts.configs import BasicTSModelConfig, DPRConfig
 
 
 @dataclass
-class MoETCMNetConfig(BasicTSModelConfig):
+class DPRNetConfig(BasicTSModelConfig):
     """
-    Config class for MoE-TCMNet (Mixture of Experts Temporal Context Modulation Network).
+    Config class for DPR-Net (Temporal Context Modulation Network).
     
-    MoE-TCMNet: A minimal MLP-based backbone with Mixture of Experts (MoE) replacing TCG.
-    Replaces the TemporalContextualGating with a sparse MoE layer while keeping all other
-    architecture parameters identical to TCMNet.
+    DPR-Net: A minimal MLP-based backbone with adaptive Temporal Context Modulation (DPR).
+    Replaces heavy Transformer encoders with a lightweight MLP + DPR block.
     """
 
     input_len: int = field(default=None, metadata={"help": "Input sequence length."})
@@ -32,12 +31,12 @@ class MoETCMNetConfig(BasicTSModelConfig):
     mlp_dropout: float = field(default=0.1, metadata={"help": "Dropout rate for MLP layers."})
     mlp_activation: str = field(default="gelu", metadata={"help": "Activation function for MLP."})
     
-    # MoE parameters (mapped from TCM parameters for fair comparison)
-    num_experts: int = field(default=8, metadata={"help": "Number of experts in MoE layer (maps to num_patterns in TCMNet)."})
-    top_k: int = field(default=1, metadata={"help": "Top-k experts to route each token to."})
-    noisy_gating: bool = field(default=True, metadata={"help": "Whether to add noise to gating for load balancing."})
-    moe_loss_coef: float = field(default=0.01, metadata={"help": "Coefficient for MoE load balancing loss (maps to orth_lambda in TCMNet)."})
-    expert_hidden_ratio: float = field(default=0.5, metadata={"help": "Expert hidden dim ratio relative to hidden_size."})
+    # DPR parameters
+    use_dpr: bool = field(default=True, metadata={"help": "Whether to use DPR (DPR) block."})
+    num_patterns: int = field(default=8, metadata={"help": "Number of patterns in DPR."})
+    use_multiscale: bool = field(default=True, metadata={"help": "Whether to use multi-scale context in DPR."})
+    identity_init: bool = field(default=True, metadata={"help": "Whether to use identity initialization for DPR."})
+    orth_lambda: float = field(default=0.01, metadata={"help": "Orthogonality regularization weight."})
     
     # Head parameters
     head_dropout: float = field(default=0.0, metadata={"help": "Dropout rate for head layers."})
@@ -49,4 +48,4 @@ class MoETCMNetConfig(BasicTSModelConfig):
     subtract_last: bool = field(default=False, metadata={"help": "Whether to subtract the last element in RevIN."})
     
     # Output
-    output_attentions: bool = field(default=False, metadata={"help": "Whether to output attention weights (not used in MoE-TCMNet)."})
+    output_attentions: bool = field(default=False, metadata={"help": "Whether to output attention weights (not used in DPR-Net)."})

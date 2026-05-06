@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from basicts.configs import BasicTSModelConfig, TCGConfig
+from basicts.configs import BasicTSModelConfig, DPRConfig
 
 
 @dataclass
@@ -22,7 +22,7 @@ class TimeFilterConfig(BasicTSModelConfig):
 
     pos: bool = field(default=True, metadata={"help": "Whether to add positional embedding in PatchEmbed."})
 
-    tcg: TCGConfig = field(default_factory=TCGConfig, metadata={"help": "Temporal-Contextual Gating options."})
+    dpr: DPRConfig = field(default_factory=DPRConfig, metadata={"help": "Dynamic Pattern Routing options."})
 
     def __post_init__(self) -> None:
         if self.input_len is None or self.output_len is None or self.num_features is None:

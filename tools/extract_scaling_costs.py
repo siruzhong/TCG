@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Extract parameter counts (and optionally FLOPs) for the scaling vs TCM table.
+Extract parameter counts (and optionally FLOPs) for the scaling vs DPR table.
 
 1) checkpoints/test_scaling — reads each run's training_log*.log line:
      Total parameters: <N>
    and cfg.json to label 2xW / 2xD / 2xB (matches run_rq2_scaling.WIDE_CONFIGS).
 
-2) Raw and +TCM are usually NOT under test_scaling (RQ2 only runs WIDE).
+2) Raw and +DPR are usually NOT under test_scaling (RQ2 only runs WIDE).
    This script *computes* their param counts (and optional FLOPs) from the
    same configs as run_rq2_scaling.get_model_config for ETTh1 96->96
    (change TASK_REF below if needed).
@@ -150,9 +150,9 @@ def collect_test_scaling() -> list[dict]:
     return rows
 
 
-def _get_rq2_config(model_short: str, dataset_name, num_f, in_l, out_l, overrides, tcg_enabled: Optional[bool]):
+def _get_rq2_config(model_short: str, dataset_name, num_f, in_l, out_l, overrides, dpr_enabled: Optional[bool]):
     import run_rq2_scaling as rq2
-    from basicts.configs import TCGConfig
+    from basicts.configs import DPRConfig
 
     model_name = (
         "PatchTST"
@@ -164,8 +164,8 @@ def _get_rq2_config(model_short: str, dataset_name, num_f, in_l, out_l, override
     cls, mcfg, _ = rq2.get_model_config(
         model_name, in_l, out_l, num_f, dataset_name, overrides=overrides
     )
-    if hasattr(mcfg, "tcg") and tcg_enabled is not None:
-        mcfg.tcg = TCGConfig(enabled=tcg_enabled) if tcg_enabled else TCGConfig(enabled=False)
+    if hasattr(mcfg, "dpr") and dpr_enabled is not None:
+        mcfg.dpr = DPRConfig(enabled=dpr_enabled) if dpr_enabled else DPRConfig(enabled=False)
     return cls, mcfg
 
 
@@ -197,30 +197,30 @@ def flops_thop(model_class, model_config, model_short: str) -> Optional[float]:
     return float(macs) * 1e-9  # GMac (thop reports MACs as default)
 
 
-def build_raw_tcm_params_and_flops(compute_flops: bool) -> Dict[str, Any]:
-    """Per-architecture counts for TASK_REF, default width (Raw) and TCG on (+TCM)."""
+def build_raw_dpr_params_and_flops(compute_flops: bool) -> Dict[str, Any]:
+    """Per-architecture counts for TASK_REF, default width (Raw) and DPR on (+DPR)."""
     dname, nf, in_l, out_l = TASK_REF
     out: Dict[str, Any] = {}
     for model_short in ("PatchTST", "TimesNet", "TimeMixer"):
-        # Raw: no RQ2 overrides, TCG off (as in RQ2 run_experiment for WIDE, but without overrides = defaults)
-        cls_r, mcfg_r = _get_rq2_config(model_short, dname, nf, in_l, out_l, None, tcg_enabled=False)
+        # Raw: no RQ2 overrides, DPR off (as in RQ2 run_experiment for WIDE, but without overrides = defaults)
+        cls_r, mcfg_r = _get_rq2_config(model_short, dname, nf, in_l, out_l, None, dpr_enabled=False)
         pr = count_params_for_config(cls_r, mcfg_r)
         fr = flops_thop(cls_r, mcfg_r, model_short) if compute_flops else None
 
-        # +TCM: same backbone, TCG on (use patch-friendly defaults like run_baselines)
-        from basicts.configs import TCGConfig
+        # +DPR: same backbone, DPR on (use patch-friendly defaults like run_baselines)
+        from basicts.configs import DPRConfig
 
-        cls_t, mcfg_t = _get_rq2_config(model_short, dname, nf, in_l, out_l, None, tcg_enabled=None)
+        cls_t, mcfg_t = _get_rq2_config(model_short, dname, nf, in_l, out_l, None, dpr_enabled=None)
         use_ms = model_short not in {"PatchTST", "WPMixer", "TimeFilter"}
-        mcfg_t.tcg = TCGConfig(enabled=True, num_patterns=8, orth_lambda=0.01, use_multiscale=use_ms)
+        mcfg_t.dpr = DPRConfig(enabled=True, num_patterns=8, orth_lambda=0.01, use_multiscale=use_ms)
         pt = count_params_for_config(cls_t, mcfg_t)
         ft = flops_thop(cls_t, mcfg_t, model_short) if compute_flops else None
 
         out[model_short] = {
             "raw_params": pr,
-            "tcm_params": pt,
+            "dpr_params": pt,
             "raw_gmac": fr,
-            "tcm_gmac": ft,
+            "dpr_gmac": ft,
         }
     return out
 
@@ -276,9 +276,9 @@ def main():
             )
             args.flops = False
 
-    print("=== Raw / +TCM: parameter counts (instantiated from config, not from logs) ===\n")
+    print("=== Raw / +DPR: parameter counts (instantiated from config, not from logs) ===\n")
     os.chdir(_PROJECT_ROOT)
-    stats = build_raw_tcm_params_and_flops(compute_flops=args.flops)
+    stats = build_raw_dpr_params_and_flops(compute_flops=args.flops)
     dname, nf, in_l, out_l = TASK_REF
     print(f"Reference task: {dname}  ({in_l} -> {out_l})  num_features={nf}\n")
     for model, d in stats.items():
@@ -288,13 +288,13 @@ def main():
             + (f"  |  ~{d['raw_gmac']:.3f} GMac" if d.get("raw_gmac") is not None else "")
         )
         print(
-            f"    +TCM:  {d['tcm_params']:,} params"
-            + (f"  |  ~{d['tcm_gmac']:.3f} GMac" if d.get("tcm_gmac") is not None else "")
+            f"    +DPR:  {d['dpr_params']:,} params"
+            + (f"  |  ~{d['dpr_gmac']:.3f} GMac" if d.get("dpr_gmac") is not None else "")
         )
         if d["raw_params"]:
-            print(f"    +TCM / Raw  params: {_fmt_ratio(d['tcm_params'], d['raw_params'])}")
-        if args.flops and d.get("raw_gmac") and d.get("tcm_gmac"):
-            print(f"    +TCM / Raw  FLOPs:  {_fmt_ratio(d['tcm_gmac'], d['raw_gmac'])}")
+            print(f"    +DPR / Raw  params: {_fmt_ratio(d['dpr_params'], d['raw_params'])}")
+        if args.flops and d.get("raw_gmac") and d.get("dpr_gmac"):
+            print(f"    +DPR / Raw  FLOPs:  {_fmt_ratio(d['dpr_gmac'], d['raw_gmac'])}")
         print()
 
     # Relative Params row (for LaTeX), vs same-arch Raw on TASK_REF
@@ -312,8 +312,8 @@ def main():
         for lab in ("2xW", "2xD", "2xB"):
             if m in log_map and lab in log_map[m]:
                 extra += f"  |  {lab} {_fmt_ratio(log_map[m][lab], raw)}"
-        tcm = stats[m]["tcm_params"]
-        extra += f"  |  +TCM {_fmt_ratio(tcm, raw)}"
+        dpr = stats[m]["dpr_params"]
+        extra += f"  |  +DPR {_fmt_ratio(dpr, raw)}"
         print(extra)
     print()
     print("Note: FLOPs are not in .log files. --flops uses thop (slow on large TimesNet).")

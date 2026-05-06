@@ -16,7 +16,7 @@ from basicts.models.TimeMixer import TimeMixerForForecasting, TimeMixerConfig
 from basicts.models.TimesNet import TimesNetForForecasting, TimesNetConfig
 from basicts.models.TimeFilter import TimeFilterForForecasting, TimeFilterConfig
 from basicts.models.WPMixer import WPMixerForForecasting, WPMixerConfig
-from basicts.configs import BasicTSForecastingConfig, TCGConfig
+from basicts.configs import BasicTSForecastingConfig, DPRConfig
 from basicts.runners.callback import AddAuxiliaryLoss, EarlyStopping
 from basicts import BasicTSLauncher
 
@@ -31,7 +31,7 @@ MODELS = [
     "TimeMixer",
     "TimeFilter",
     "WPMixer",
-    "TCMNet",
+    "DPRNet",
 ]
 
 DATASETS = [
@@ -60,12 +60,12 @@ DATASET_CONFIGS = {
     "default":  {"input_lens": [96], "output_lens": [96, 192, 336, 720]},
 }
 
-TCG_ORTH_LAMBDA_SEARCH = [1e-4, 1e-3, 0.0]
-TCG_NUM_PATTERNS_SEARCH = [4, 8, 16]
-TCG_CONV_KERNELS_SEARCH = [(1,), (3,), (7,)]
+DPR_ORTH_LAMBDA_SEARCH = [1e-4, 1e-3, 0.0]
+DPR_NUM_PATTERNS_SEARCH = [4, 8, 16]
+DPR_CONV_KERNELS_SEARCH = [(1,), (3,), (7,)]
 USE_CLEAN_TARGETS = False
 
-# Patch-based models benefit from disabling TCG's multi-scale depthwise conv
+# Patch-based models benefit from disabling DPR's multi-scale depthwise conv
 # (use k=1 point-wise only). Patching already encodes local temporal structure,
 # so the k=3/7 kernels tend to interfere rather than help.
 PATCH_MODELS_NO_CONV = {"PatchTST", "WPMixer", "TimeFilter"}
@@ -78,10 +78,10 @@ def _check_results_exist(
     dataset_name,
     input_len,
     output_len,
-    enable_tcg,
-    tcg_num_patterns=None,
-    tcg_orth_lambda=None,
-    tcg_conv_kernels=None,
+    enable_dpr,
+    dpr_num_patterns=None,
+    dpr_orth_lambda=None,
+    dpr_conv_kernels=None,
 ):
     base_dir = os.path.join(CHECKPOINT_BASE, model_name, f"{dataset_name}_100_{input_len}_{output_len}")
     if not os.path.exists(base_dir):
@@ -99,15 +99,15 @@ def _check_results_exist(
             import json
             with open(cfg_file, 'r') as f:
                 cfg = json.load(f)
-            tcg_params = cfg.get("model_config", {}).get("tcg", {}).get("params", {})
-            cfg_enabled = tcg_params.get("enabled", "")
-            is_tcg_enabled = str(cfg_enabled).lower() == "true"
-            if enable_tcg != is_tcg_enabled:
+            dpr_params = cfg.get("model_config", {}).get("dpr", {}).get("params", {})
+            cfg_enabled = dpr_params.get("enabled", "")
+            is_dpr_enabled = str(cfg_enabled).lower() == "true"
+            if enable_dpr != is_dpr_enabled:
                 continue
-            if enable_tcg and tcg_num_patterns is not None:
-                cfg_num_patterns = int(tcg_params.get("num_patterns", 0))
-                cfg_orth_lambda = float(tcg_params.get("orth_lambda", 0))
-                cfg_conv_kernels = tcg_params.get("conv_kernels", None)
+            if enable_dpr and dpr_num_patterns is not None:
+                cfg_num_patterns = int(dpr_params.get("num_patterns", 0))
+                cfg_orth_lambda = float(dpr_params.get("orth_lambda", 0))
+                cfg_conv_kernels = dpr_params.get("conv_kernels", None)
                 # Stored as list in JSON; normalize to tuple[int, ...] or None.
                 if cfg_conv_kernels is not None:
                     try:
@@ -116,9 +116,9 @@ def _check_results_exist(
                         cfg_conv_kernels = None
 
                 if (
-                    cfg_num_patterns != tcg_num_patterns
-                    or cfg_orth_lambda != tcg_orth_lambda
-                    or cfg_conv_kernels != tcg_conv_kernels
+                    cfg_num_patterns != dpr_num_patterns
+                    or cfg_orth_lambda != dpr_orth_lambda
+                    or cfg_conv_kernels != dpr_conv_kernels
                 ):
                     continue
             return True
@@ -229,20 +229,20 @@ def run_experiment(model_name, dataset_name, num_features, input_len, output_len
     )
 
     callbacks = [EarlyStopping(patience=10)]
-    if kwargs.get("enable_tcg", True) and hasattr(model_config, "tcg"):
+    if kwargs.get("enable_dpr", True) and hasattr(model_config, "dpr"):
         use_multiscale = model_name not in PATCH_MODELS_NO_CONV
-        tcg_cfg = TCGConfig(
+        dpr_cfg = DPRConfig(
             enabled=True,
-            num_patterns=int(kwargs.get("tcg_num_patterns", kwargs.get("tcg_K", 8))),
-            orth_lambda=float(kwargs.get("tcg_orth_lambda", 0.01)),
+            num_patterns=int(kwargs.get("dpr_num_patterns", kwargs.get("dpr_K", 8))),
+            orth_lambda=float(kwargs.get("dpr_orth_lambda", 0.01)),
             use_multiscale=use_multiscale,
-            conv_kernels=tuple(kwargs["tcg_conv_kernels"])
-            if "tcg_conv_kernels" in kwargs and kwargs["tcg_conv_kernels"] is not None
+            conv_kernels=tuple(kwargs["dpr_conv_kernels"])
+            if "dpr_conv_kernels" in kwargs and kwargs["dpr_conv_kernels"] is not None
             else None,
         )
-        model_config.tcg = tcg_cfg
-        if tcg_cfg.orth_lambda > 0:
-            callbacks.append(AddAuxiliaryLoss(losses=["tcg_orth"]))
+        model_config.dpr = dpr_cfg
+        if dpr_cfg.orth_lambda > 0:
+            callbacks.append(AddAuxiliaryLoss(losses=["dpr_orth"]))
 
     cfg = BasicTSForecastingConfig(
         model=model_class, model_config=model_config,
@@ -255,22 +255,22 @@ def run_experiment(model_name, dataset_name, num_features, input_len, output_len
     BasicTSLauncher.launch_training(cfg)
 
 
-def worker_task_tcg(
+def worker_task_dpr(
     gpu_queue,
     model_name,
     dataset_name,
     num_features,
     input_len,
     output_len,
-    tcg_num_patterns,
-    tcg_orth_lambda,
-    tcg_conv_kernels,
+    dpr_num_patterns,
+    dpr_orth_lambda,
+    dpr_conv_kernels,
 ):
-    effective_kernels = (1,) if model_name in PATCH_MODELS_NO_CONV else tuple(int(k) for k in tcg_conv_kernels)
+    effective_kernels = (1,) if model_name in PATCH_MODELS_NO_CONV else tuple(int(k) for k in dpr_conv_kernels)
     kernels_tag = "k" + "-".join(str(k) for k in effective_kernels)
     task_id = (
         f"{model_name} | {dataset_name} | {input_len}->{output_len} | "
-        f"TCG[{kernels_tag}] K={tcg_num_patterns} orth={_format_orth_lambda(tcg_orth_lambda)}"
+        f"DPR[{kernels_tag}] K={dpr_num_patterns} orth={_format_orth_lambda(dpr_orth_lambda)}"
     )
 
     if _check_results_exist(
@@ -279,8 +279,8 @@ def worker_task_tcg(
         input_len,
         output_len,
         True,
-        tcg_num_patterns,
-        tcg_orth_lambda,
+        dpr_num_patterns,
+        dpr_orth_lambda,
         effective_kernels,
     ):
         print(f"[Skip] {task_id} - results already exist")
@@ -298,10 +298,10 @@ def worker_task_tcg(
             input_len,
             output_len,
             str(gpu_id),
-            enable_tcg=True,
-            tcg_num_patterns=tcg_num_patterns,
-            tcg_orth_lambda=tcg_orth_lambda,
-            tcg_conv_kernels=effective_kernels,
+            enable_dpr=True,
+            dpr_num_patterns=dpr_num_patterns,
+            dpr_orth_lambda=dpr_orth_lambda,
+            dpr_conv_kernels=effective_kernels,
         )
 
     except Exception as e:
@@ -340,7 +340,7 @@ def worker_task_raw(
             input_len,
             output_len,
             str(gpu_id),
-            enable_tcg=False,
+            enable_dpr=False,
         )
 
     except Exception as e:
@@ -366,16 +366,16 @@ if __name__ == "__main__":
         f"(up to {max_concurrent} concurrent, JOBS_PER_GPU={JOBS_PER_GPU})"
     )
 
-    tcg_combos = len(TCG_NUM_PATTERNS_SEARCH) * len(TCG_ORTH_LAMBDA_SEARCH)
-    kernels_combos = len(TCG_CONV_KERNELS_SEARCH)
+    dpr_combos = len(DPR_NUM_PATTERNS_SEARCH) * len(DPR_ORTH_LAMBDA_SEARCH)
+    kernels_combos = len(DPR_CONV_KERNELS_SEARCH)
     print(
-        f"TCG grid: orth_lambda in {TCG_ORTH_LAMBDA_SEARCH}, "
-        f"num_patterns in {TCG_NUM_PATTERNS_SEARCH} "
-        f"conv_kernels in {TCG_CONV_KERNELS_SEARCH} "
-        f"({tcg_combos * kernels_combos} combos per config)"
+        f"DPR grid: orth_lambda in {DPR_ORTH_LAMBDA_SEARCH}, "
+        f"num_patterns in {DPR_NUM_PATTERNS_SEARCH} "
+        f"conv_kernels in {DPR_CONV_KERNELS_SEARCH} "
+        f"({dpr_combos * kernels_combos} combos per config)"
     )
 
-    total_tcg = 0
+    total_dpr = 0
     total_raw = 0
 
     for model_name in MODELS:
@@ -384,12 +384,12 @@ if __name__ == "__main__":
 
             for input_len in config["input_lens"]:
                 for output_len in config["output_lens"]:
-                    for tcg_num_patterns in TCG_NUM_PATTERNS_SEARCH:
-                        for tcg_orth_lambda in TCG_ORTH_LAMBDA_SEARCH:
-                            kernels_list = [(1,)] if model_name in PATCH_MODELS_NO_CONV else TCG_CONV_KERNELS_SEARCH
-                            for tcg_conv_kernels in kernels_list:
+                    for dpr_num_patterns in DPR_NUM_PATTERNS_SEARCH:
+                        for dpr_orth_lambda in DPR_ORTH_LAMBDA_SEARCH:
+                            kernels_list = [(1,)] if model_name in PATCH_MODELS_NO_CONV else DPR_CONV_KERNELS_SEARCH
+                            for dpr_conv_kernels in kernels_list:
                                 p = Process(
-                                    target=worker_task_tcg,
+                                    target=worker_task_dpr,
                                     args=(
                                         gpu_queue,
                                         model_name,
@@ -397,15 +397,15 @@ if __name__ == "__main__":
                                         num_features,
                                         input_len,
                                         output_len,
-                                        tcg_num_patterns,
-                                        tcg_orth_lambda,
-                                        tcg_conv_kernels,
+                                        dpr_num_patterns,
+                                        dpr_orth_lambda,
+                                        dpr_conv_kernels,
                                     ),
                                 )
                                 p.start()
                                 processes.append(p)
                                 time.sleep(0.1)
-                                total_tcg += 1
+                                total_dpr += 1
 
                     p = Process(
                         target=worker_task_raw,
@@ -423,7 +423,7 @@ if __name__ == "__main__":
                     time.sleep(0.1)
                     total_raw += 1
 
-    print(f"Scheduled {len(processes)} tasks ({total_tcg} TCG + {total_raw} RAW)")
+    print(f"Scheduled {len(processes)} tasks ({total_dpr} DPR + {total_raw} RAW)")
 
     for p in processes:
         p.join()

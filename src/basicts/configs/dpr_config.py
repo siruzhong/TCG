@@ -1,14 +1,14 @@
-"""Hyperparameters for Temporal-Contextual Gating (TCG)."""
+"""Hyperparameters for Dynamic Pattern Routing (DPR)."""
 
 from dataclasses import dataclass
 from typing import Optional
 
-from basicts.modules.tcg import TemporalContextualGating
+from basicts.modules.dpr import TemporalContextualGating
 
 
 @dataclass
-class TCGConfig:
-    """When ``enabled`` is False, models skip building TCG and related losses.
+class DPRConfig:
+    """When ``enabled`` is False, models skip building DPR and related losses.
 
     Ablation flags (default True/1 preserves original behavior):
         use_multiscale: Use k1=3, k2=7 depthwise convs (False -> k=1 point-wise only)

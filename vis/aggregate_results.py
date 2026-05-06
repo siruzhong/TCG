@@ -1,19 +1,19 @@
-"""One-click incremental updater for ``tcg_result.md``.
+"""One-click incremental updater for ``dpr_result.md``.
 
 Scans every ``checkpoints/<Model>/<dataset>_1_<input>_<horizon>/<hash>/`` folder,
-reads ``cfg.json`` (to classify as RAW or TCG) and ``test_metrics.json`` (MSE /
-MAE), then updates ``tcg_result.md`` in place using the best-of rule:
+reads ``cfg.json`` (to classify as RAW or DPR) and ``test_metrics.json`` (MSE /
+MAE), then updates ``dpr_result.md`` in place using the best-of rule:
 
     new_cell = argmin_MSE( old_markdown_cell, all_disk_runs_for_this_cell )
 
 Conventions enforced by this script (keep them in sync with run_baselines.py):
 
-* RAW  = ``cfg.json -> model_config.tcg.params`` is empty (defaults to
+* RAW  = ``cfg.json -> model_config.dpr.params`` is empty (defaults to
         ``enabled=False``). Usually a single run per cell.
-* TCG  = ``cfg.json -> model_config.tcg.params`` has ``enabled=True``. When
+* DPR  = ``cfg.json -> model_config.dpr.params`` has ``enabled=True``. When
         several hyperparameter configurations exist (orth_lambda / num_patterns
         / use_multiscale), the one with the lowest test MSE wins.
-* TCMNet, DLinear, iTransformer: one table column (no _raw / _tcg);
+* DPRNet, DLinear, iTransformer: one table column (no _raw / _dpr);
         the cell is the best MSE/MAE across all runs for that (model, dataset, horizon).
 
 The list of ``MODELS``/``DATASETS``/``DATASET_CONFIGS`` is imported directly
@@ -21,7 +21,7 @@ from ``run_baselines.py`` so adding a new model or dataset there also extends
 the table here.
 
 Usage:
-    python vis/aggregate_results.py              # in-place update of tcg_result.md
+    python vis/aggregate_results.py              # in-place update of dpr_result.md
     python vis/aggregate_results.py --dry-run    # print changes, do not write
 """
 from __future__ import annotations
@@ -50,7 +50,7 @@ except Exception:
     # Fallback: mirror the declarations in run_baselines.py. Keep in sync.
     RB_MODELS = [
         "Informer", "Crossformer", "PatchTST", "TimesNet",
-        "TimeMixer", "TimeFilter", "WPMixer", "TCMNet",
+        "TimeMixer", "TimeFilter", "WPMixer", "DPRNet",
         "DLinear", "iTransformer",
     ]
     RB_DATASETS = [
@@ -70,13 +70,13 @@ except Exception:
 # Display name used in the markdown table (differs from run_baselines name).
 MD_NAME = {"Illness": "ILI"}
 
-# No TCG split: one table column, best MSE/MAE over all matching runs.
+# No DPR split: one table column, best MSE/MAE over all matching runs.
 SINGLE_COL_MODELS = frozenset(
-    {"TCMNet", "DLinear", "iTransformer"}
+    {"DPRNet", "DLinear", "iTransformer"}
 )
 
 # Keep the *display* order of the table in sync with the model list so that
-# new models appear at the end. Most models get two columns (_raw / _tcg).
+# new models appear at the end. Most models get two columns (_raw / _dpr).
 # See SINGLE_COL_MODELS: one column (plain model name) with best result only.
 # The checkpoint directory name sometimes differs from the logical model name;
 # that mapping is handled by _ckpt_subdir.
@@ -88,13 +88,13 @@ def _ckpt_subdir(model_name: str) -> str:
         "DLinear",
     ):
         return model_name
-    # TCMNet checkpoints live under ``TCMNetForForecasting`` (``model.__name__``), same
-    # pattern as PatchTST / TimesNet / iTransformer, not a bare ``TCMNet`` folder.
+    # DPRNet checkpoints live under ``DPRNetForForecasting`` (``model.__name__``), same
+    # pattern as PatchTST / TimesNet / iTransformer, not a bare ``DPRNet`` folder.
     return f"{model_name}ForForecasting"
 
 
 MODELS = list(RB_MODELS)
-MARKDOWN = os.path.join(REPO_ROOT, "tcg_result.md")
+MARKDOWN = os.path.join(REPO_ROOT, "dpr_result.md")
 CHECKPOINTS = os.path.join(REPO_ROOT, "checkpoints")
 
 # Optional dataset ordering source. If this CSV exists (produced by
@@ -148,17 +148,17 @@ def _resolve_emit_datasets(existing: dict) -> list:
 # Cfg / metric parsing
 # --------------------------------------------------------------------------- #
 
-def _is_tcg_enabled(cfg: dict) -> bool:
-    tcg = cfg.get("model_config", {}).get("tcg", {})
-    if not isinstance(tcg, dict):
+def _is_dpr_enabled(cfg: dict) -> bool:
+    dpr = cfg.get("model_config", {}).get("dpr", {})
+    if not isinstance(dpr, dict):
         return False
-    params = tcg.get("params", {}) or {}
+    params = dpr.get("params", {}) or {}
     return str(params.get("enabled", "False")).lower() == "true"
 
 
-def _tcg_key(cfg: dict) -> tuple:
-    tcg = cfg.get("model_config", {}).get("tcg", {})
-    params = tcg.get("params", {}) if isinstance(tcg, dict) else {}
+def _dpr_key(cfg: dict) -> tuple:
+    dpr = cfg.get("model_config", {}).get("dpr", {})
+    params = dpr.get("params", {}) if isinstance(dpr, dict) else {}
     return (params.get("num_patterns"),
             params.get("orth_lambda"),
             params.get("use_multiscale"))
@@ -193,11 +193,11 @@ def _input_len_of(ds_name: str) -> int:
 
 
 def collect_disk() -> dict:
-    """disk[model][dataset][horizon] = {"raw" / "tcg" / "": best metrics}.
+    """disk[model][dataset][horizon] = {"raw" / "dpr" / "": best metrics}.
 
     For models in SINGLE_COL_MODELS, the best MSE/MAE over all completed runs
-    (ignoring raw vs tcg) is stored under key "".
-    All other models: split raw vs tcg as usual.
+    (ignoring raw vs dpr) is stored under key "".
+    All other models: split raw vs dpr as usual.
     """
     disk = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
     for model_name in MODELS:
@@ -208,7 +208,7 @@ def collect_disk() -> dict:
             il = _input_len_of(ds_name)
             for h in _horizons_of(ds_name):
                 pattern = os.path.join(base, f"{ds_name}_*_{il}_{h}", "*")
-                raw_best, tcg_best = None, None
+                raw_best, dpr_best = None, None
                 single_best = None
                 for run_dir in glob.glob(pattern):
                     cfg_path = os.path.join(run_dir, "cfg.json")
@@ -224,9 +224,9 @@ def collect_disk() -> dict:
                     if model_name in SINGLE_COL_MODELS:
                         if single_best is None or m["MSE"] < single_best["MSE"]:
                             single_best = m
-                    elif _is_tcg_enabled(cfg):
-                        if tcg_best is None or m["MSE"] < tcg_best["MSE"]:
-                            tcg_best = m
+                    elif _is_dpr_enabled(cfg):
+                        if dpr_best is None or m["MSE"] < dpr_best["MSE"]:
+                            dpr_best = m
                     else:
                         if raw_best is None or m["MSE"] < raw_best["MSE"]:
                             raw_best = m
@@ -234,7 +234,7 @@ def collect_disk() -> dict:
                     disk[model_name][ds_name][h] = {"": single_best}
                 else:
                     disk[model_name][ds_name][h] = {
-                        "raw": raw_best, "tcg": tcg_best,
+                        "raw": raw_best, "dpr": dpr_best,
                     }
     return disk
 
@@ -260,12 +260,12 @@ def _cell(v):
 
 
 def _parse_header_column_map(header_cells: list) -> dict:
-    """Map column-index-in-body-row -> (model_name, kind) where kind in {raw, tcg, ''}.
+    """Map column-index-in-body-row -> (model_name, kind) where kind in {raw, dpr, ''}.
 
     ``header_cells`` is the list BETWEEN the first two pipes of the header row,
     minus the first two (``dataset``, ``horizon``). Unknown columns are skipped.
-    TCMNet / DLinear / iTransformer use a single column name
-    (no _raw / _tcg).
+    DPRNet / DLinear / iTransformer use a single column name
+    (no _raw / _dpr).
     """
     mapping = {}
     for i, name in enumerate(header_cells):
@@ -273,7 +273,7 @@ def _parse_header_column_map(header_cells: list) -> dict:
         if s in SINGLE_COL_MODELS:
             mapping[i] = (s, "")
             continue
-        m = re.match(r"^(\w+)_(raw|tcg)$", s)
+        m = re.match(r"^(\w+)_(raw|dpr)$", s)
         if not m:
             continue
         mapping[i] = (m.group(1), m.group(2))
@@ -291,7 +291,7 @@ def _parse_markdown(path: str):
     header_map = {}
     if not os.path.exists(path):
         prefix = [
-            "# TCG Results",
+            "# DPR Results",
             "",
             "Generated from `checkpoints/` aggregation (MSE / MAE).",
             "",
@@ -377,7 +377,7 @@ def _header_row(model_order: list | None = None) -> str:
             cells.append(m)
         else:
             cells.append(f"{m}_raw")
-            cells.append(f"{m}_tcg")
+            cells.append(f"{m}_dpr")
     return "| " + " | ".join(cells) + " |"
 
 
@@ -417,7 +417,7 @@ def _best_of(*cands):
 def _model_kinds(model_name: str):
     if model_name in SINGLE_COL_MODELS:
         return [(0, "")]
-    return [(0, "raw"), (1, "tcg")]
+    return [(0, "raw"), (1, "dpr")]
 
 
 def merge_and_emit(existing: dict, disk: dict, model_order: list | None = None):
@@ -520,8 +520,8 @@ def _print_completeness_matrix(disk: dict, existing: dict):
                 else:
                     r_have = (_parse_cell(old.get((model_name, "raw"), "")) is not None
                               or ds_disk.get("raw") is not None)
-                    t_have = (_parse_cell(old.get((model_name, "tcg"), "")) is not None
-                              or ds_disk.get("tcg") is not None)
+                    t_have = (_parse_cell(old.get((model_name, "dpr"), "")) is not None
+                              or ds_disk.get("dpr") is not None)
                     row.append(f"  {'R' if r_have else '-'}{'T' if t_have else '-'}       ")
             print(" ".join(row))
 
@@ -533,7 +533,7 @@ def _print_completeness_matrix(disk: dict, existing: dict):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true",
-                    help="Do not modify tcg_result.md; print changes only.")
+                    help="Do not modify dpr_result.md; print changes only.")
     ap.add_argument("--path", default=MARKDOWN,
                     help="Path to the markdown file to update.")
     args = ap.parse_args()

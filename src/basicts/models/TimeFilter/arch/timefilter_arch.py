@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from basicts.modules.tcg import TemporalContextualGating, tcg_orthogonal_loss
+from basicts.modules.dpr import TemporalContextualGating, dpr_orthogonal_loss
 from ..config.timefilter_config import TimeFilterConfig
 
 
@@ -313,7 +313,7 @@ class TimeFilter_Backbone(nn.Module):
 
 
 class TimeFilterModel(nn.Module):
-    def __init__(self, configs: SimpleNamespace, tcg: Optional[TemporalContextualGating] = None):
+    def __init__(self, configs: SimpleNamespace, dpr: Optional[TemporalContextualGating] = None):
         super().__init__()
         self.args = configs
         self.task_name = configs.task_name
@@ -323,7 +323,7 @@ class TimeFilterModel(nn.Module):
         self.dim = configs.d_model
         self.d_ff = configs.d_ff
         self.patch_len = configs.patch_len
-        self.tcg = tcg
+        self.dpr = dpr
 
         self.stride = self.patch_len
         self.num_patches = int((self.seq_len - self.patch_len) / self.stride + 1)  # per-variable patches
@@ -395,10 +395,10 @@ class TimeFilterModel(nn.Module):
         masks = self._get_mask(x.device)
         x, _moe_loss = self.backbone(x, masks, self.alpha)
 
-        if self.tcg is not None:
+        if self.dpr is not None:
             x = x.reshape(B, self.n_vars, self.num_patches, self.dim)
             x = x.reshape(B * self.n_vars, self.num_patches, self.dim)
-            x = self.tcg(x)
+            x = self.dpr(x)
             x = x.reshape(B, self.n_vars, self.num_patches, self.dim)
             x = x.reshape(B, self.n_vars * self.num_patches, self.dim)
 
@@ -426,8 +426,8 @@ class TimeFilterForForecasting(nn.Module):
         super().__init__()
         self.output_len = config.output_len
         self.num_features = config.num_features
-        self.tcg_cfg = config.tcg
-        self.tcg = config.tcg.build_module(config.d_model)
+        self.dpr_cfg = config.dpr
+        self.dpr = config.dpr.build_module(config.d_model)
 
         up_cfg = SimpleNamespace(
             task_name="long_term_forecast",
@@ -447,16 +447,16 @@ class TimeFilterForForecasting(nn.Module):
             enc_in_ignored=config.num_features,
             num_class=1,
         )
-        self.model = TimeFilterModel(up_cfg, tcg=self.tcg)
+        self.model = TimeFilterModel(up_cfg, dpr=self.dpr)
 
     def forward(self, inputs: torch.Tensor, inputs_timestamps: Optional[torch.Tensor] = None) -> torch.Tensor:
         _ = inputs_timestamps
         dec_out = self.model(inputs, None, None, None)
-        tcg_extra: Dict[str, torch.Tensor] = {}
-        if self.tcg is not None and self.tcg_cfg.orth_lambda > 0:
-            tcg_extra["tcg_orth"] = self.tcg_cfg.orth_lambda * tcg_orthogonal_loss(self.tcg.mode_table)
-        if tcg_extra:
-            return {"prediction": dec_out, **tcg_extra}
+        dpr_extra: Dict[str, torch.Tensor] = {}
+        if self.dpr is not None and self.dpr_cfg.orth_lambda > 0:
+            dpr_extra["dpr_orth"] = self.dpr_cfg.orth_lambda * dpr_orthogonal_loss(self.dpr.mode_table)
+        if dpr_extra:
+            return {"prediction": dec_out, **dpr_extra}
         return dec_out
 
 

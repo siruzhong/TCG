@@ -3,7 +3,7 @@ from typing import Dict, Optional
 import torch
 from basicts.modules.embed import FeatureEmbedding
 from basicts.modules.mlps import MLPLayer
-from basicts.modules.tcg import tcg_orthogonal_loss
+from basicts.modules.dpr import dpr_orthogonal_loss
 from basicts.modules.transformer import (EncoderLayer, MultiHeadAttention,
                                          ProbAttention, Seq2SeqDecoder,
                                          Seq2SeqDecoderLayer,
@@ -19,12 +19,12 @@ def _informer_return(
     prediction: torch.Tensor,
     output_attentions: bool,
     attn_weights,
-    tcg_extra: Dict[str, torch.Tensor],
+    dpr_extra: Dict[str, torch.Tensor],
 ):
     if output_attentions:
-        return {"prediction": prediction, "attn_weights": attn_weights, **tcg_extra}
-    if tcg_extra:
-        return {"prediction": prediction, **tcg_extra}
+        return {"prediction": prediction, "attn_weights": attn_weights, **dpr_extra}
+    if dpr_extra:
+        return {"prediction": prediction, **dpr_extra}
     return prediction
 
 
@@ -106,8 +106,8 @@ class Informer(nn.Module):
             layer_norm=torch.nn.LayerNorm(config.hidden_size)
         )
         self.projection = nn.Linear(config.hidden_size, config.num_features, bias=True)
-        self.tcg_cfg = config.tcg
-        self.tcg = config.tcg.build_module(config.hidden_size)
+        self.dpr_cfg = config.dpr
+        self.dpr = config.dpr.build_module(config.hidden_size)
 
     def forward(
             self,
@@ -136,12 +136,12 @@ class Informer(nn.Module):
             (targets.shape[0], targets.shape[1]), dec_hidden_states)
         dec_hidden_states, dec_self_attn_weights, dec_cross_attn_weights = self.decoder(
             dec_hidden_states, enc_hidden_states, attention_mask, output_attentions=self.output_attentions)
-        tcg_extra: Dict[str, torch.Tensor] = {}
-        if self.tcg is not None:
-            dec_hidden_states = self.tcg(dec_hidden_states)
-            if self.tcg_cfg.orth_lambda > 0:
-                tcg_extra["tcg_orth"] = self.tcg_cfg.orth_lambda * tcg_orthogonal_loss(
-                    self.tcg.mode_table
+        dpr_extra: Dict[str, torch.Tensor] = {}
+        if self.dpr is not None:
+            dec_hidden_states = self.dpr(dec_hidden_states)
+            if self.dpr_cfg.orth_lambda > 0:
+                dpr_extra["dpr_orth"] = self.dpr_cfg.orth_lambda * dpr_orthogonal_loss(
+                    self.dpr.mode_table
                 )
         prediction = self.projection(dec_hidden_states)[:, -self.output_len:, :]
 
@@ -149,5 +149,5 @@ class Informer(nn.Module):
             attn_weights = {"enc_attn_weights": enc_attn_weights,
                             "dec_self_attn_weights": dec_self_attn_weights,
                             "dec_cross_attn_weights": dec_cross_attn_weights}
-            return _informer_return(prediction, True, attn_weights, tcg_extra)
-        return _informer_return(prediction, False, None, tcg_extra)
+            return _informer_return(prediction, True, attn_weights, dpr_extra)
+        return _informer_return(prediction, False, None, dpr_extra)

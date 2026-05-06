@@ -1,4 +1,4 @@
-# TCG Sensitivity Analysis
+# DPR Sensitivity Analysis
 
 Generated from `checkpoints/test_sensitivity/` aggregation.
 Model: PatchTST, Dataset: Illness, Input Len: 24

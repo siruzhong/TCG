@@ -24,7 +24,7 @@ if src_dir not in sys.path:
 
 from basicts.models.PatchTST import PatchTSTForForecasting, PatchTSTConfig
 from basicts.models.Crossformer import Crossformer, CrossformerConfig
-from basicts.configs import BasicTSForecastingConfig, TCGConfig
+from basicts.configs import BasicTSForecastingConfig, DPRConfig
 from basicts.runners.callback import AddAuxiliaryLoss, EarlyStopping
 from basicts import BasicTSLauncher
 
@@ -63,9 +63,9 @@ def get_model_config(
     input_len,
     output_len,
     num_features,
-    tcg_num_patterns,
-    tcg_orth_lambda,
-    tcg_conv_kernels,
+    dpr_num_patterns,
+    dpr_orth_lambda,
+    dpr_conv_kernels,
 ):
     if model_name == "PatchTST":
         cfg = PatchTSTConfig(
@@ -85,11 +85,11 @@ def get_model_config(
     else:
         raise ValueError(f"Unsupported model: {model_name}")
 
-    cfg.tcg = TCGConfig(
+    cfg.dpr = DPRConfig(
         enabled=True,
-        num_patterns=int(tcg_num_patterns),
-        orth_lambda=float(tcg_orth_lambda),
-        conv_kernels=tuple(int(k) for k in tcg_conv_kernels),
+        num_patterns=int(dpr_num_patterns),
+        orth_lambda=float(dpr_orth_lambda),
+        conv_kernels=tuple(int(k) for k in dpr_conv_kernels),
     )
     return model_class, cfg, False
 
@@ -99,23 +99,23 @@ def run_experiment(
     input_len,
     output_len,
     gpu_id,
-    tcg_num_patterns,
-    tcg_orth_lambda,
-    tcg_conv_kernels,
+    dpr_num_patterns,
+    dpr_orth_lambda,
+    dpr_conv_kernels,
 ):
     model_class, model_config, use_timestamps = get_model_config(
         model_name,
         input_len,
         output_len,
         NUM_FEATURES,
-        tcg_num_patterns,
-        tcg_orth_lambda,
-        tcg_conv_kernels,
+        dpr_num_patterns,
+        dpr_orth_lambda,
+        dpr_conv_kernels,
     )
 
     callbacks = [EarlyStopping(patience=10)]
-    if tcg_orth_lambda > 0:
-        callbacks.append(AddAuxiliaryLoss(losses=["tcg_orth"]))
+    if dpr_orth_lambda > 0:
+        callbacks.append(AddAuxiliaryLoss(losses=["dpr_orth"]))
 
     cfg = BasicTSForecastingConfig(
         model=model_class,
@@ -146,15 +146,15 @@ def worker(
     model_name,
     input_len,
     output_len,
-    tcg_num_patterns,
-    tcg_orth_lambda,
-    tcg_conv_kernels,
+    dpr_num_patterns,
+    dpr_orth_lambda,
+    dpr_conv_kernels,
 ):
     gpu_id = None
     task_id = (
         f"{model_name} | {DATASET_NAME} | {input_len}->{output_len} | "
-        f"K={tcg_num_patterns} orth={_format_orth_lambda(tcg_orth_lambda)} "
-        f"conv={_format_conv_kernels(tcg_conv_kernels)}"
+        f"K={dpr_num_patterns} orth={_format_orth_lambda(dpr_orth_lambda)} "
+        f"conv={_format_conv_kernels(dpr_conv_kernels)}"
     )
     try:
         gpu_id = gpu_queue.get()
@@ -164,9 +164,9 @@ def worker(
             input_len,
             output_len,
             str(gpu_id),
-            tcg_num_patterns,
-            tcg_orth_lambda,
-            tcg_conv_kernels,
+            dpr_num_patterns,
+            dpr_orth_lambda,
+            dpr_conv_kernels,
         )
     except Exception as e:
         print(f"[Error] {task_id} failed: {e}")

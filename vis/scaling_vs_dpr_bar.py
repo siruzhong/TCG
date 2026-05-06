@@ -11,7 +11,7 @@ import numpy as np
 import seaborn as sns
 
 # Unify style with other visualisations (whitegrid + sans-serif, used in
-# covid19_60_raw_tcm_bubble.py, parameter_sensitivity.py, dataset_landscape.py, etc.)
+# covid19_60_raw_dpr_bubble.py, parameter_sensitivity.py, dataset_landscape.py, etc.)
 sns.set_theme(
     style="whitegrid",
     font_scale=1.0,

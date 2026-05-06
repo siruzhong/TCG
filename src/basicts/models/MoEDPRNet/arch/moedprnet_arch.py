@@ -6,7 +6,7 @@ from basicts.modules.embed import PatchEmbedding
 from basicts.modules.norm import RevIN
 from torch import nn
 
-from ..config.moetcmnet_config import MoETCMNetConfig
+from ..config.moedprnet_config import MoEDPRNetConfig
 
 
 class MoELayer(nn.Module):
@@ -163,19 +163,19 @@ class MoELayer(nn.Module):
         return out, aux
 
 
-class MoETCMBlock(nn.Module):
+class MoEDPRBlock(nn.Module):
     """
-    MoE-TCM Block: MLP base mapping + MoE layer.
+    MoE-DPR Block: MLP base mapping + MoE layer.
     
-    Architecture is identical to TCMBlock except TCG is replaced with MoE.
+    Architecture is identical to DPRBlock except DPR is replaced with MoE.
     """
     
-    def __init__(self, config: MoETCMNetConfig):
+    def __init__(self, config: MoEDPRNetConfig):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
         
-        # Base mapping MLP (identical to TCMBlock)
+        # Base mapping MLP (identical to DPRBlock)
         mlp_layers = []
         intermediate_dim = int(config.hidden_size * config.mlp_expansion)
         
@@ -198,7 +198,7 @@ class MoETCMBlock(nn.Module):
         
         self.base_mapping = nn.Sequential(*mlp_layers)
         
-        # MoE layer (replaces TCG)
+        # MoE layer (replaces DPR)
         self.moe = MoELayer(
             d_model=config.hidden_size,
             num_experts=config.num_experts,
@@ -211,13 +211,13 @@ class MoETCMBlock(nn.Module):
         self.norm2 = nn.LayerNorm(config.hidden_size)
     
     def forward(self, x: torch.Tensor, return_aux: bool = False):
-        # Base mapping with residual (identical to TCMBlock)
+        # Base mapping with residual (identical to DPRBlock)
         residual = x
         x = self.norm1(x)
         x = self.base_mapping(x)
         x = x + residual
         
-        # MoE layer with residual (replaces TCG)
+        # MoE layer with residual (replaces DPR)
         x = self.norm2(x)
         
         if return_aux:
@@ -228,14 +228,14 @@ class MoETCMBlock(nn.Module):
         return x
 
 
-class MoETCMNetBackbone(nn.Module):
+class MoEDPRNetBackbone(nn.Module):
     """
-    MoE-TCMNet Backbone: PatchEmbedding + MoE-TCM Block.
+    MoE-DPRNet Backbone: PatchEmbedding + MoE-DPR Block.
     
-    Identical to TCMNetBackbone except uses MoETCMBlock.
+    Identical to DPRNetBackbone except uses MoEDPRBlock.
     """
     
-    def __init__(self, config: MoETCMNetConfig):
+    def __init__(self, config: MoEDPRNetConfig):
         super().__init__()
         self.config = config
         self.num_features = config.num_features
@@ -254,7 +254,7 @@ class MoETCMNetBackbone(nn.Module):
             self.num_patches += 1
         self.seq_len = self.num_patches
         
-        self.moe_block = MoETCMBlock(config)
+        self.moe_block = MoEDPRBlock(config)
     
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         hidden_states = self.embedding(inputs)
@@ -268,9 +268,9 @@ class MoETCMNetBackbone(nn.Module):
         return hidden_states, aux
 
 
-class MoETCMNetHead(nn.Module):
+class MoEDPRNetHead(nn.Module):
     """
-    Forecasting head. Identical to TCMNetHead.
+    Forecasting head. Identical to DPRNetHead.
     """
     
     def __init__(
@@ -314,16 +314,16 @@ class MoETCMNetHead(nn.Module):
         return x
 
 
-class MoETCMNetForForecasting(nn.Module):
+class MoEDPRNetForForecasting(nn.Module):
     """
-    MoE-TCMNet for Time Series Forecasting.
+    MoE-DPRNet for Time Series Forecasting.
     
-    Architecture is identical to TCMNetForForecasting except:
-    1. Uses MoETCMNetBackbone (MoE instead of TCG)
-    2. Returns moe_loss instead of tcg_orth
+    Architecture is identical to DPRNetForForecasting except:
+    1. Uses MoEDPRNetBackbone (MoE instead of DPR)
+    2. Returns moe_loss instead of dpr_orth
     """
     
-    def __init__(self, config: MoETCMNetConfig):
+    def __init__(self, config: MoEDPRNetConfig):
         super().__init__()
         self.config = config
         
@@ -335,10 +335,10 @@ class MoETCMNetForForecasting(nn.Module):
                 subtract_last=config.subtract_last
             )
         
-        self.backbone = MoETCMNetBackbone(config)
+        self.backbone = MoEDPRNetBackbone(config)
         
         self.flatten = nn.Flatten(start_dim=-2)
-        self.head = MoETCMNetHead(
+        self.head = MoEDPRNetHead(
             input_size=self.backbone.seq_len * config.hidden_size,
             output_size=config.output_len,
             individual=config.individual_head,

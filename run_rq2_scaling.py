@@ -5,12 +5,12 @@ RQ2 Wide Scaling Sweep: PatchTST / TimesNet / TimeMixer, or WPMixer / TimeFilter
   - Illness     : input 24 -> pred 24
   - ExchangeRate: input 96 -> pred 96
 
-Only runs WIDE scaling variants (no RAW / TCG — results already in tcg_result.md).
+Only runs WIDE scaling variants (no RAW / DPR — results already in dpr_result.md).
 Each (model, dataset) runs 4 scaling configs:
   1) 2x width     : hidden=512,  intermediate=2048, num_layers=1
   2) 2x depth     : hidden=256,  intermediate=1024, num_layers=2
   3) 2x both      : hidden=512,  intermediate=2048, num_layers=2
-  4) param_match  : width auto-tuned so base model params ≈ base+TCG params
+  4) param_match  : width auto-tuned so base model params ≈ base+DPR params
 
 Outputs (see `RQ2_CKPT_SAVE_DIR`): each job saves under ``{RQ2_CKPT_SAVE_DIR}/{md5}/`` —
 checkpoints (``*.pt``), ``training_log_*.log``, ``tensorboard/``, ``cfg.json``, ``test_metrics.json``.
@@ -33,7 +33,7 @@ from basicts.models.TimeFilter import TimeFilterForForecasting, TimeFilterConfig
 from basicts.models.TimeMixer import TimeMixerForForecasting, TimeMixerConfig
 from basicts.models.TimesNet import TimesNetForForecasting, TimesNetConfig
 from basicts.models.WPMixer import WPMixerForForecasting, WPMixerConfig
-from basicts.configs import BasicTSForecastingConfig, TCGConfig
+from basicts.configs import BasicTSForecastingConfig, DPRConfig
 from basicts.runners.callback import EarlyStopping
 from basicts import BasicTSLauncher
 
@@ -67,7 +67,7 @@ WIDE_CONFIGS = [
     # {"tag": "w2_d1", "hidden_size": 512,  "intermediate_size": 2048, "num_layers": 1},  # 2x width
     # {"tag": "w1_d2", "hidden_size": 256,  "intermediate_size": 1024, "num_layers": 2},  # 2x depth
     # {"tag": "w2_d2", "hidden_size": 512,  "intermediate_size": 2048, "num_layers": 2},  # 2x both
-    {"tag": "param_match", "hidden_size": 0, "intermediate_size": 0, "num_layers": 1},  # params ≈ base+TCG
+    {"tag": "param_match", "hidden_size": 0, "intermediate_size": 0, "num_layers": 1},  # params ≈ base+DPR
 ]
 
 USE_CLEAN_TARGETS = True
@@ -95,12 +95,12 @@ def _apply_overrides(cfg, overrides: dict | None):
             raise ValueError(f"Unknown field {k} on {type(cfg).__name__}")
 
 
-def _count_params(model_name, dataset_name, num_features, input_len, output_len, overrides, use_tcg):
+def _count_params(model_name, dataset_name, num_features, input_len, output_len, overrides, use_dpr):
     mclass, cfg, ts = get_model_config(
         model_name, input_len, output_len, num_features, dataset_name, overrides=overrides
     )
-    if hasattr(cfg, "tcg"):
-        cfg.tcg = TCGConfig(enabled=use_tcg)
+    if hasattr(cfg, "dpr"):
+        cfg.dpr = DPRConfig(enabled=use_dpr)
     model = mclass(cfg)
     model = model.cpu()
     n = sum(p.numel() for p in model.parameters())
@@ -110,7 +110,7 @@ def _count_params(model_name, dataset_name, num_features, input_len, output_len,
 
 def find_param_matched_overrides(model_name, dataset_name, num_features, input_len, output_len):
     target = _count_params(model_name, dataset_name, num_features,
-                           input_len, output_len, None, use_tcg=True)
+                           input_len, output_len, None, use_dpr=True)
 
     candidates = [32, 48, 64, 96, 128, 160, 192, 224, 256, 288, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024]
     best_diff = float("inf")
@@ -122,7 +122,7 @@ def find_param_matched_overrides(model_name, dataset_name, num_features, input_l
         overrides = {"hidden_size": h, "intermediate_size": ff, "num_layers": 1}
         try:
             params = _count_params(model_name, dataset_name, num_features,
-                                   input_len, output_len, overrides, use_tcg=False)
+                                   input_len, output_len, overrides, use_dpr=False)
             diff = abs(params - target)
             if diff < best_diff:
                 best_diff = diff
@@ -213,9 +213,9 @@ def run_experiment(
     )
 
     callbacks = [EarlyStopping(patience=10)]
-    # TCG disabled for WIDE runs
-    if hasattr(model_config, "tcg"):
-        model_config.tcg = TCGConfig(enabled=False)
+    # DPR disabled for WIDE runs
+    if hasattr(model_config, "dpr"):
+        model_config.dpr = DPRConfig(enabled=False)
 
     cfg = BasicTSForecastingConfig(
         model=model_class,

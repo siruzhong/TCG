@@ -1,4 +1,4 @@
-"""Visualization utilities for RQ4 pattern analysis - TCM Interpretability."""
+"""Visualization utilities for RQ4 pattern analysis - DPR Interpretability."""
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -147,12 +147,12 @@ def visualize_transition_matrix(
     pass
 
 
-def visualize_tcm_interpretability(
+def visualize_dpr_interpretability(
     raw_input: np.ndarray,
     intensity_gate: np.ndarray,
     routing_probs: np.ndarray,
     save_path: str,
-    title: str = "(a) TCM Interpretability: Unsupervised Regime Discovery",
+    title: str = "(a) DPR Interpretability: Unsupervised Regime Discovery",
     regime_shift_start: Optional[int] = None,
     regime_shift_end: Optional[int] = None,
     figsize: Tuple[float, float] = (12, 9),
@@ -270,8 +270,8 @@ def create_demo_visualization(save_dir: str = "./") -> None:
     pi_probs = np.clip(pi_probs, 0, 1)
     pi_probs = pi_probs / pi_probs.sum(axis=1, keepdims=True)
     pi_probs = pi_probs.T
-    save_path = f"{save_dir}/TCM_interpretability_demo"
-    visualize_tcm_interpretability(
+    save_path = f"{save_dir}/DPR_interpretability_demo"
+    visualize_dpr_interpretability(
         raw_input,
         gate_g,
         pi_probs,

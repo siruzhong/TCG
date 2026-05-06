@@ -1,8 +1,8 @@
-# TCG Results
+# DPR Results
 
 Generated from `checkpoints/` aggregation (MSE / MAE).
 
-| dataset | horizon | Informer_raw | Informer_tcg | Crossformer_raw | Crossformer_tcg | PatchTST_raw | PatchTST_tcg | TimesNet_raw | TimesNet_tcg | TimeMixer_raw | TimeMixer_tcg | WPMixer_raw | WPMixer_tcg | TimeFilter_raw | TimeFilter_tcg | TCMNet | DLinear | iTransformer |
+| dataset | horizon | Informer_raw | Informer_dpr | Crossformer_raw | Crossformer_dpr | PatchTST_raw | PatchTST_dpr | TimesNet_raw | TimesNet_dpr | TimeMixer_raw | TimeMixer_dpr | WPMixer_raw | WPMixer_dpr | TimeFilter_raw | TimeFilter_dpr | DPRNet | DLinear | iTransformer |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ILI | 24 | 7.005 / 1.868 | 5.666 / 1.764 | 4.736 / 1.480 | 4.593 / 1.428 | 3.633 / 1.079 | 3.108 / 1.042 | 9.241 / 1.389 | 3.108 / 1.042 | 3.124 / 1.136 | 3.123 / 1.142 | 3.173 / 1.022 | 2.796 / 1.046 | 1.991 / 0.873 | 1.821 / 0.848 | 3.079 / 1.096 | 4.076 / 1.419 | 3.507 / 1.071 |
 | ILI | 36 | 7.201 / 1.898 | 5.529 / 1.725 | 5.153 / 1.561 | 4.734 / 1.468 | 4.019 / 1.192 | 3.891 / 1.207 | 7.371 / 1.438 | 7.147 / 1.441 | 3.538 / 1.214 | 3.428 / 1.194 | 3.720 / 1.147 | 3.310 / 1.131 | 2.481 / 0.976 | 2.460 / 0.974 | 3.422 / 1.178 | 4.036 / 1.417 | 3.974 / 1.152 |
