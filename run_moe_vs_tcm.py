@@ -57,6 +57,7 @@ def run_experiment(
     input_len,
     output_len,
     gpu_id,
+    top_k=None,
 ):
     if model_name == "TCMNet":
         cfg = TCMNetConfig(
@@ -69,6 +70,7 @@ def run_experiment(
             num_mlp_layers=2,
             mlp_expansion=2.0,
             mlp_dropout=0.1,
+            use_tcm=True,
             num_patterns=8,
             use_multiscale=True,
             identity_init=True,
@@ -80,7 +82,29 @@ def run_experiment(
         callbacks = [EarlyStopping(patience=10)]
         if cfg.orth_lambda > 0:
             callbacks.append(AddAuxiliaryLoss(losses=["tcg_orth"]))
-    elif model_name == "MoETCMNet":
+    elif model_name == "TCMNet_no_TCM":
+        cfg = TCMNetConfig(
+            input_len=input_len,
+            output_len=output_len,
+            num_features=num_features,
+            patch_len=16,
+            patch_stride=8,
+            hidden_size=256,
+            num_mlp_layers=2,
+            mlp_expansion=2.0,
+            mlp_dropout=0.1,
+            use_tcm=False,
+            num_patterns=8,
+            use_multiscale=True,
+            identity_init=True,
+            orth_lambda=0.0,
+            head_dropout=0.0,
+            use_revin=True,
+        )
+        model_class = TCMNetForForecasting
+        callbacks = [EarlyStopping(patience=10)]
+    elif model_name.startswith("MoETCMNet"):
+        top_k_value = top_k if top_k is not None else 1
         cfg = MoETCMNetConfig(
             input_len=input_len,
             output_len=output_len,
@@ -92,7 +116,7 @@ def run_experiment(
             mlp_expansion=2.0,
             mlp_dropout=0.1,
             num_experts=8,
-            top_k=1,
+            top_k=top_k_value,
             noisy_gating=True,
             moe_loss_coef=0.01,
             head_dropout=0.0,
@@ -136,9 +160,11 @@ def worker(
     num_features,
     input_len,
     output_len,
+    top_k=None,
 ):
     gpu_id = None
-    task_id = f"{model_name} | {dataset_name} | {input_len}->{output_len}"
+    top_k_str = f"_top{top_k}" if top_k is not None else ""
+    task_id = f"{model_name}{top_k_str} | {dataset_name} | {input_len}->{output_len}"
     try:
         gpu_id = gpu_queue.get()
         print(f"[Start] {task_id} on GPU {gpu_id}")
@@ -149,6 +175,7 @@ def worker(
             input_len,
             output_len,
             str(gpu_id),
+            top_k=top_k,
         )
     except Exception as e:
         print(f"[Error] {task_id} failed: {e}")
@@ -177,16 +204,34 @@ if __name__ == "__main__":
         num_features = ds_config["num_features"]
         input_len = ds_config["input_len"]
         for output_len in ds_config["output_lens"]:
-            for model_name in ["TCMNet", "MoETCMNet"]:
+            p = Process(
+                target=worker,
+                args=(
+                    gpu_queue,
+                    "TCMNet_no_TCM",
+                    dataset_name,
+                    num_features,
+                    input_len,
+                    output_len,
+                    None,
+                ),
+            )
+            p.start()
+            processes.append(p)
+            time.sleep(0.05)
+            total_tasks += 1
+            
+            for top_k in [1, 2, 4]:
                 p = Process(
                     target=worker,
                     args=(
                         gpu_queue,
-                        model_name,
+                        "MoETCMNet",
                         dataset_name,
                         num_features,
                         input_len,
                         output_len,
+                        top_k,
                     ),
                 )
                 p.start()
@@ -196,7 +241,7 @@ if __name__ == "__main__":
 
     print(f"Scheduled {total_tasks} comparison experiments.")
     print(f"Datasets: {list(DATASET_CONFIGS.keys())}")
-    print(f"Models: TCMNet, MoETCMNet")
+    print(f"Models: TCMNet_no_TCM, MoETCMNet (top_k=1,2,4)")
 
     for p in processes:
         p.join()
