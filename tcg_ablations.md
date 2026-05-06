@@ -30,6 +30,46 @@ Generated from `checkpoints/test_ablation/` aggregation. Raw results from `tcg_r
 | Illness      | 24      | 4.736 / 1.480 | 4.593 / 1.428 | 5.129 / 1.546 | 4.661 / 1.448 | 5.062 / 1.525 | 4.721 / 1.458 |
 | ExchangeRate | 96      | 0.269 / 0.349 | 0.237 / 0.335 | 0.266 / 0.346 | 0.242 / 0.338 | 0.279 / 0.367 | 0.238 / 0.335 |
 
+## MoE vs TCM Comparison
+
+Direct comparison between TCMNet (with TCG) and MoE-TCMNet variants (different top-k) on identical architecture parameters.
+
+| dataset      | horizon | TCMNet   | TCMNet_noTCM | MoE-top1 | MoE-top2 | MoE-top4 |
+| ------------ | ------- | -------- | ------------ | -------- | -------- | -------- |
+| Illness      | 24      | 3.079 / 1.096 | 3.347 / 1.091 | 3.715 / 1.156 | 3.755 / 1.097 | 4.146 / 1.122 |
+| ExchangeRate | 96      | 0.102 / 0.225 | — | 0.102 / 0.224 | 0.103 / 0.225 | 0.103 / 0.225 |
+| ETTh1        | 96      | 0.392 / 0.394 | 0.405 / 0.398 | 0.411 / 0.403 | 0.419 / 0.405 | 0.417 / 0.404 |
+
+**vs TCMNet baseline (delta MSE / delta MAE):**
+
+| dataset      | TCMNet_noTCM | MoE-top1 | MoE-top2 | MoE-top4 |
+| ------------ | ------------ | -------- | -------- | -------- |
+| Illness      | +8.7% / -0.4% | +20.7% / +5.5% | +21.9% / +0.1% | +34.7% / +2.4% |
+| ExchangeRate | — | -0.0% / -0.4% | +1.0% / +0.0% | +0.4% / -0.1% |
+| ETTh1        | +3.4% / +1.0% | +4.8% / +2.3% | +6.8% / +2.7% | +6.2% / +2.6% |
+
+### Training & Inference Time
+
+| dataset | model | params | train/epoch | total train | test | test (per 1M params) |
+| ------- | ----- | ------ | ----------- | ----------- | ---- | ------------------- |
+| Illness | TCMNet | 325K | 0.85s | 68.7s (71 ep) | 0.73s | 2.24 μs |
+| Illness | TCMNet_noTCM | 287K | 0.81s | 93.7s (100 ep) | 0.71s | 2.47 μs |
+| Illness | MoE-top1 | 818K | 1.06s | 50.2s (43 ep) | 0.77s | 0.94 μs |
+| Illness | MoE-top2 | 818K | 1.18s | 96.3s (73 ep) | 0.90s | 1.10 μs |
+| Illness | MoE-top4 | 818K | 1.02s | 86.1s (76 ep) | 0.77s | 0.94 μs |
+| ETTh1 | TCMNet | 602K | 29.90s | 1197.5s (28 ep) | 8.60s | 14.29 μs |
+| ETTh1 | TCMNet_noTCM | 563K | 15.84s | 544.9s (32 ep) | 5.07s | 9.00 μs |
+| ETTh1 | MoE-top1 | 1,095K | 62.62s | 794.4s (10 ep) | 18.68s | 17.06 μs |
+| ETTh1 | MoE-top2 | 1,095K | 89.12s | 178.2s (2 ep) | 16.05s | 14.66 μs |
+| ETTh1 | MoE-top4 | 1,095K | 45.89s | 588.1s (13 ep) | 13.43s | 12.27 μs |
+
+**Notes:**
+- TCMNet values from `tcg_result.md` (established baseline)
+- MoE values from this experiment (`checkpoints/moe_vs_tcm/`)
+- All MoE variants use `num_experts=8`, `moe_loss_coef=0.01`
+- MoE-top1 active params: 65K, top2: 131K, top4: 262K (vs TCG: ~35K)
+- MoE-TCMNet has ~1.82x total parameters (1.09M vs 0.60M)
+
 ## Observations
 
 1. **raw** = model without TCG (from `tcg_result.md`)
@@ -38,3 +78,17 @@ Generated from `checkpoints/test_ablation/` aggregation. Raw results from `tcg_r
 3. **wo_orth** (orthogonal regularization = 0): Mixed results.
 4. **wo_identity** (gamma ~ N(0, 0.01) instead of 0): Small impact in most cases.
 5. **discrete_top2** (hard Top-2 routing): Similar to soft routing in most cases.
+6. **TCMNet without TCM**:
+   - Removing TCM (TCG) block degrades performance on both datasets
+   - Illness: +8.7% MSE (3.079 → 3.347), MAE nearly unchanged (-0.4%)
+   - ETTh1: +3.4% MSE (0.392 → 0.405), +1.0% MAE
+   - TCMNet_noTCM has fewer params (287K vs 325K on Illness, 563K vs 602K on ETTh1) because TCM block is removed
+   - Training is faster per epoch but requires more epochs to converge (100 vs 71 on Illness, 32 vs 28 on ETTh1)
+   - **Conclusion**: TCM (TCG) block provides consistent performance gain even though it adds only ~38K parameters (~12%)
+
+7. **MoE vs TCM**: 
+   - **top_k=1**: Worse on Illness (+20.7%) and ETTh1 (+4.8%), equal on ExchangeRate (-0.0%)
+   - **top_k=2**: Worse on Illness (+21.9%) and ETTh1 (+6.8%), equal on ExchangeRate (+1.0%)
+   - **top_k=4**: Worse on Illness (+34.7%) and ETTh1 (+6.2%), equal on ExchangeRate (+0.4%)
+   - **MoE vs no-TCM**: Even compared to TCMNet without TCM, MoE-top1 is worse on Illness (+11.0%) and ETTh1 (+1.5%)
+   - **Conclusion**: Increasing top-k does not help. MoE does not outperform either TCMNet or TCMNet_noTCM. TCM is the most efficient component for time series forecasting among the three.

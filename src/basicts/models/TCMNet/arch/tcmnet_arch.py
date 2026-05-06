@@ -38,12 +38,14 @@ class TCMBlock(nn.Module):
         
         self.base_mapping = nn.Sequential(*mlp_layers)
         
-        self.tcm = TemporalContextualGating(
-            d_model=config.hidden_size,
-            num_patterns=config.num_patterns,
-            use_multiscale=config.use_multiscale,
-            identity_init=config.identity_init,
-        )
+        self.use_tcm = getattr(config, 'use_tcm', True)
+        if self.use_tcm:
+            self.tcm = TemporalContextualGating(
+                d_model=config.hidden_size,
+                num_patterns=config.num_patterns,
+                use_multiscale=config.use_multiscale,
+                identity_init=config.identity_init,
+            )
         
         self.norm1 = nn.LayerNorm(config.hidden_size)
         self.norm2 = nn.LayerNorm(config.hidden_size)
@@ -55,7 +57,10 @@ class TCMBlock(nn.Module):
         x = x + residual
         
         x = self.norm2(x)
-        x, aux = self.tcm(x, return_aux=return_aux)
+        if self.use_tcm:
+            x, aux = self.tcm(x, return_aux=return_aux)
+        else:
+            aux = None
         
         if return_aux:
             return x, aux
@@ -187,7 +192,7 @@ class TCMNetForForecasting(nn.Module):
         if aux and "routing_probs" in aux:
             output["routing_probs"] = aux["routing_probs"]
         
-        if self.orth_lambda > 0:
+        if self.orth_lambda > 0 and self.backbone.tcm_block.use_tcm:
             output["tcg_orth"] = self.orth_lambda * tcg_orthogonal_loss(
                 self.backbone.tcm_block.tcm.mode_table
             )

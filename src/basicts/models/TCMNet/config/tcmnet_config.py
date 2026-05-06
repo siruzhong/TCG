@@ -32,6 +32,7 @@ class TCMNetConfig(BasicTSModelConfig):
     mlp_activation: str = field(default="gelu", metadata={"help": "Activation function for MLP."})
     
     # TCM parameters
+    use_tcm: bool = field(default=True, metadata={"help": "Whether to use TCM (TCG) block."})
     num_patterns: int = field(default=8, metadata={"help": "Number of patterns in TCM."})
     use_multiscale: bool = field(default=True, metadata={"help": "Whether to use multi-scale context in TCM."})
     identity_init: bool = field(default=True, metadata={"help": "Whether to use identity initialization for TCM."})
