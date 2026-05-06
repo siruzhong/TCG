@@ -14,9 +14,9 @@ Extract parameter counts (and optionally FLOPs) for the scaling vs DPR table.
 FLOPs: not logged anywhere in BasicTS. If ``pip install thop`` is available,
   pass --flops to estimate forward MACs (shown as GMac in thop output).
 
-Usage:
-  python tools/extract_scaling_costs.py
-  python tools/extract_scaling_costs.py --flops
+Usage (from repository root):
+  python scripts/extract_scaling_costs.py
+  python scripts/extract_scaling_costs.py --flops
 """
 from __future__ import annotations
 

@@ -21,8 +21,8 @@ from ``run_baselines.py`` so adding a new model or dataset there also extends
 the table here.
 
 Usage:
-    python vis/aggregate_results.py              # in-place update of dpr_result.md
-    python vis/aggregate_results.py --dry-run    # print changes, do not write
+    python scripts/aggregate_results.py              # in-place update of dpr_result.md
+    python scripts/aggregate_results.py --dry-run    # print changes, do not write
 """
 from __future__ import annotations
 
@@ -101,8 +101,7 @@ CHECKPOINTS = os.path.join(REPO_ROOT, "checkpoints")
 # ``vis/dataset_analysis.py``), datasets will be emitted in its row order --
 # which is by heterogeneity score, highest first. If it is missing, we fall
 # back to ``run_baselines.DATASETS`` declaration order.
-THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-HETEROGENEITY_CSV = os.path.join(THIS_DIR, "dataset_analysis.csv")
+HETEROGENEITY_CSV = os.path.join(REPO_ROOT, "vis", "dataset_analysis.csv")
 
 
 def _resolve_dataset_order() -> list:
