@@ -5,9 +5,8 @@ Scenario picked to highlight DPRNet strengths among raw baselines:
 - small parameter count (near the smallest group)
 
 Outputs:
-- vis/covid19_60_raw_dpr_bubble_data.csv
-- vis/covid19_60_raw_dpr_bubble.png
-- vis/covid19_60_raw_dpr_bubble.pdf
+- vis/efficiency_analysis.csv
+- vis/efficiency_analysis.pdf
 """
 
 from __future__ import annotations
@@ -211,7 +210,7 @@ def _save_csv(points: list[Point], out_csv: str) -> None:
                 f"{p.observed_mse:.4f}", f"{p.observed_mae:.4f}", p.run_dir,
             ])
 
-def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
+def _plot(points: list[Point], out_pdf: str) -> None:
     sns.set_theme(style="whitegrid", font_scale=1.0, rc={
         "font.family": "sans-serif",
         "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
@@ -240,7 +239,7 @@ def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
         "TimeFilter": "#c49c94",
         "WPMixer": "#f7b6d2",
         "iTransformer": "#969696",
-        "DPRNet": "#d62728", 
+        "DPRNet": "#d62728",
     }
 
     fig, ax = plt.subplots(figsize=(8, 5), dpi=300)
@@ -249,8 +248,8 @@ def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
     xs = [p.params / 1e6 for p in points]
     ys = [p.mse for p in points]
 
-    x_min, x_max = min(xs) * 0.45, max(xs) * 1.3 
-    y_min, y_max = min(ys) - 0.15, max(ys) + 0.1 
+    x_min, x_max = min(xs) * 0.45, max(xs) * 1.3
+    y_min, y_max = min(ys) - 0.15, max(ys) + 0.1
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
 
@@ -265,10 +264,10 @@ def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
         "PatchTST": {"xytext": (14, -8), "ha": "left", "va": "top"},
         "TimesNet": {"xytext": (0, -16), "ha": "center", "va": "top"},
         "TimeMixer": {"xytext": (0, -16), "ha": "center", "va": "top"},
-        "TimeFilter": {"xytext": (0, 18), "ha": "center", "va": "bottom"}, 
+        "TimeFilter": {"xytext": (0, 18), "ha": "center", "va": "bottom"},
         "WPMixer": {"xytext": (14, 12), "ha": "left", "va": "bottom"},
         "iTransformer": {"xytext": (0, 16), "ha": "center", "va": "bottom"},
-        "DPRNet": {"xytext": (14, -14), "ha": "left", "va": "top"},      
+        "DPRNet": {"xytext": (14, -14), "ha": "left", "va": "top"},
     }
 
     annotations = []
@@ -276,10 +275,10 @@ def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
         x = p.params / 1e6
         y = p.mse
         is_ours = (p.model == "DPRNet")
-        
+
         marker = "*" if is_ours else "o"
         # Emphasize ours with larger scatter marker sizes
-        size = 2000 if is_ours else 1600  
+        size = 2000 if is_ours else 1600
         edge_c = "#800000" if is_ours else "white"
         # Slightly thicker edge for readability and depth
         edge_w = 1.5 if is_ours else 1.2
@@ -366,26 +365,23 @@ def _plot(points: list[Point], out_png: str, out_pdf: str) -> None:
 
     ax.set_xlabel("Parameters (Millions, Log Scale)")
     ax.set_ylabel("MSE (Lower is better)")
-    
+
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
     plt.tight_layout()
-    fig.savefig(out_png, dpi=300, bbox_inches="tight", facecolor="white")
     fig.savefig(out_pdf, bbox_inches="tight", facecolor="white")
     plt.close(fig)
-    
+
 def main() -> None:
-    out_csv = os.path.join(REPO_ROOT, "vis", "covid19_60_raw_dpr_bubble_data.csv")
-    out_png = os.path.join(REPO_ROOT, "vis", "covid19_60_raw_dpr_bubble.png")
-    out_pdf = os.path.join(REPO_ROOT, "vis", "covid19_60_raw_dpr_bubble.pdf")
+    out_csv = os.path.join(REPO_ROOT, "vis", "efficiency_analysis.csv")
+    out_pdf = os.path.join(REPO_ROOT, "vis", "efficiency_analysis.pdf")
 
     points = _collect_points()
     _save_csv(points, out_csv)
-    _plot(points, out_png, out_pdf)
+    _plot(points, out_pdf)
 
     print(f"Saved: {out_csv}")
-    print(f"Saved: {out_png}")
     print(f"Saved: {out_pdf}")
 
 
