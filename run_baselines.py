@@ -31,6 +31,7 @@ MODELS = [
     "TimeMixer",
     "TimeFilter",
     "WPMixer",
+    "TCMNet",
 ]
 
 DATASETS = [
@@ -61,6 +62,7 @@ DATASET_CONFIGS = {
 
 TCG_ORTH_LAMBDA_SEARCH = [1e-4, 1e-3, 0.0]
 TCG_NUM_PATTERNS_SEARCH = [4, 8, 16]
+TCG_CONV_KERNELS_SEARCH = [(1,), (3,), (7,)]
 USE_CLEAN_TARGETS = False
 
 # Patch-based models benefit from disabling TCG's multi-scale depthwise conv
@@ -71,7 +73,16 @@ PATCH_MODELS_NO_CONV = {"PatchTST", "WPMixer", "TimeFilter"}
 CHECKPOINT_BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkpoints")
 
 
-def _check_results_exist(model_name, dataset_name, input_len, output_len, enable_tcg, tcg_num_patterns=None, tcg_orth_lambda=None):
+def _check_results_exist(
+    model_name,
+    dataset_name,
+    input_len,
+    output_len,
+    enable_tcg,
+    tcg_num_patterns=None,
+    tcg_orth_lambda=None,
+    tcg_conv_kernels=None,
+):
     base_dir = os.path.join(CHECKPOINT_BASE, model_name, f"{dataset_name}_100_{input_len}_{output_len}")
     if not os.path.exists(base_dir):
         return False
@@ -96,7 +107,19 @@ def _check_results_exist(model_name, dataset_name, input_len, output_len, enable
             if enable_tcg and tcg_num_patterns is not None:
                 cfg_num_patterns = int(tcg_params.get("num_patterns", 0))
                 cfg_orth_lambda = float(tcg_params.get("orth_lambda", 0))
-                if cfg_num_patterns != tcg_num_patterns or cfg_orth_lambda != tcg_orth_lambda:
+                cfg_conv_kernels = tcg_params.get("conv_kernels", None)
+                # Stored as list in JSON; normalize to tuple[int, ...] or None.
+                if cfg_conv_kernels is not None:
+                    try:
+                        cfg_conv_kernels = tuple(int(k) for k in cfg_conv_kernels)
+                    except Exception:
+                        cfg_conv_kernels = None
+
+                if (
+                    cfg_num_patterns != tcg_num_patterns
+                    or cfg_orth_lambda != tcg_orth_lambda
+                    or cfg_conv_kernels != tcg_conv_kernels
+                ):
                     continue
             return True
         except Exception:
@@ -213,6 +236,9 @@ def run_experiment(model_name, dataset_name, num_features, input_len, output_len
             num_patterns=int(kwargs.get("tcg_num_patterns", kwargs.get("tcg_K", 8))),
             orth_lambda=float(kwargs.get("tcg_orth_lambda", 0.01)),
             use_multiscale=use_multiscale,
+            conv_kernels=tuple(kwargs["tcg_conv_kernels"])
+            if "tcg_conv_kernels" in kwargs and kwargs["tcg_conv_kernels"] is not None
+            else None,
         )
         model_config.tcg = tcg_cfg
         if tcg_cfg.orth_lambda > 0:
@@ -238,14 +264,25 @@ def worker_task_tcg(
     output_len,
     tcg_num_patterns,
     tcg_orth_lambda,
+    tcg_conv_kernels,
 ):
-    ms_tag = "k1" if model_name in PATCH_MODELS_NO_CONV else "ms"
+    effective_kernels = (1,) if model_name in PATCH_MODELS_NO_CONV else tuple(int(k) for k in tcg_conv_kernels)
+    kernels_tag = "k" + "-".join(str(k) for k in effective_kernels)
     task_id = (
         f"{model_name} | {dataset_name} | {input_len}->{output_len} | "
-        f"TCG[{ms_tag}] K={tcg_num_patterns} orth={_format_orth_lambda(tcg_orth_lambda)}"
+        f"TCG[{kernels_tag}] K={tcg_num_patterns} orth={_format_orth_lambda(tcg_orth_lambda)}"
     )
 
-    if _check_results_exist(model_name, dataset_name, input_len, output_len, True, tcg_num_patterns, tcg_orth_lambda):
+    if _check_results_exist(
+        model_name,
+        dataset_name,
+        input_len,
+        output_len,
+        True,
+        tcg_num_patterns,
+        tcg_orth_lambda,
+        effective_kernels,
+    ):
         print(f"[Skip] {task_id} - results already exist")
         return
 
@@ -264,6 +301,7 @@ def worker_task_tcg(
             enable_tcg=True,
             tcg_num_patterns=tcg_num_patterns,
             tcg_orth_lambda=tcg_orth_lambda,
+            tcg_conv_kernels=effective_kernels,
         )
 
     except Exception as e:
@@ -329,10 +367,12 @@ if __name__ == "__main__":
     )
 
     tcg_combos = len(TCG_NUM_PATTERNS_SEARCH) * len(TCG_ORTH_LAMBDA_SEARCH)
+    kernels_combos = len(TCG_CONV_KERNELS_SEARCH)
     print(
         f"TCG grid: orth_lambda in {TCG_ORTH_LAMBDA_SEARCH}, "
         f"num_patterns in {TCG_NUM_PATTERNS_SEARCH} "
-        f"({tcg_combos} combos per config)"
+        f"conv_kernels in {TCG_CONV_KERNELS_SEARCH} "
+        f"({tcg_combos * kernels_combos} combos per config)"
     )
 
     total_tcg = 0
@@ -346,23 +386,26 @@ if __name__ == "__main__":
                 for output_len in config["output_lens"]:
                     for tcg_num_patterns in TCG_NUM_PATTERNS_SEARCH:
                         for tcg_orth_lambda in TCG_ORTH_LAMBDA_SEARCH:
-                            p = Process(
-                                target=worker_task_tcg,
-                                args=(
-                                    gpu_queue,
-                                    model_name,
-                                    dataset_name,
-                                    num_features,
-                                    input_len,
-                                    output_len,
-                                    tcg_num_patterns,
-                                    tcg_orth_lambda,
-                                ),
-                            )
-                            p.start()
-                            processes.append(p)
-                            time.sleep(0.1)
-                            total_tcg += 1
+                            kernels_list = [(1,)] if model_name in PATCH_MODELS_NO_CONV else TCG_CONV_KERNELS_SEARCH
+                            for tcg_conv_kernels in kernels_list:
+                                p = Process(
+                                    target=worker_task_tcg,
+                                    args=(
+                                        gpu_queue,
+                                        model_name,
+                                        dataset_name,
+                                        num_features,
+                                        input_len,
+                                        output_len,
+                                        tcg_num_patterns,
+                                        tcg_orth_lambda,
+                                        tcg_conv_kernels,
+                                    ),
+                                )
+                                p.start()
+                                processes.append(p)
+                                time.sleep(0.1)
+                                total_tcg += 1
 
                     p = Process(
                         target=worker_task_raw,
