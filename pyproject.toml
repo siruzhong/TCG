@@ -2,9 +2,9 @@
 requires = ["setuptools>=45", "wheel"]
 
 [project]
-name = "DropoutTS"
+name = "dpr"
 version = "1.0.0"
-description = "Sample-Adaptive Dropout for Time Series Forecasting"
+description = "Adaptive Feature Recalibration for Non-Stationary Time Series Forecasting"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "Apache-2.0"}

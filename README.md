@@ -1,179 +1,119 @@
-# DropoutTS: Sample-Adaptive Dropout for Robust Time Series Forecasting
+# Adaptive Feature Recalibration for Non-Stationary Time Series Forecasting
+
+Official code for the work **“Adaptive Feature Recalibration for Non-Stationary Time Series Forecasting”**, centered on **Dynamic Pattern Routing (DPR)** and the minimalist forecaster **DPRNet**.
+
+**Terminology.** **DPR** is implemented as [`TemporalContextualGating`](src/basicts/modules/dpr.py) (`Perceive → Route → Modulate`), configured via [`DPRConfig`](src/basicts/configs/dpr_config.py). **DPRNet** is the dedicated model stack in [`src/basicts/models/DPRNet/`](src/basicts/models/DPRNet/). The same DPR adapter can be attached to other backbones for plug-and-play experiments.
 
 ## Overview
 
-DropoutTS is a sample-adaptive dropout method designed for time series forecasting. Unlike traditional dropout that applies a fixed rate across all samples, DropoutTS dynamically adjusts dropout rates based on the noise level of each sample, estimated through frequency-domain analysis. This approach provides adaptive regularization that is more effective for noisy time series data.
+Non-stationary series shift across regimes; standard backbones apply **globally shared** feature transforms to every token, which creates a **static mapping bottleneck** and a compromised average representation. **DPR** addresses this with **token-level feature recalibration**: local temporal context drives **soft routing** over a learned basis of dynamical motifs, then **residual Hadamard modulation** (with identity-style initialization so training starts near the backbone’s original map). An **orthogonal regularizer** on the basis discourages collapsed or redundant routing.
 
-### Key Features
+### Contributions (paper)
 
-- **Sample-Adaptive Dropout**: Automatically adjusts dropout rates per sample based on noise estimation
-- **Frequency-Domain Analysis**: Uses Spectral Flatness Measure (SFM) as a physical anchor for noise estimation
-- **Task-Loss Optimization**: Dropout parameters are optimized end-to-end with the forecasting task
-- **Easy Integration**: Seamlessly integrates with existing time series forecasting models via callback mechanism
-- **Comprehensive Evaluation**: Tested on multiple datasets including synthetic and real-world time series
+- **Mechanism:** DPR for continuous, regime-aware recalibration at the token level.
+- **Architecture:** **DPRNet** — a deliberately simple patch-MLP stack where gains come from recalibration rather than macroscopic parameter scaling.
+- **Plug-and-play:** The same DPR module lifts diverse backbones (attention, convolution, MLP-style) with small overhead.
 
 ## Installation
 
 ### Requirements
 
-- Python >= 3.9
-- PyTorch >= 1.10.0
-- NumPy >= 1.24.4
-- Other dependencies listed in `requirements.txt`
+- Python ≥ 3.9  
+- PyTorch (see your CUDA/CPU setup)  
+- Dependencies in [`pyproject.toml`](pyproject.toml) / [`requirements.txt`](requirements.txt) if present  
 
-### Install from Source
+### Install from source
 
 ```bash
-# Clone the repository (replace with actual repository URL)
-cd DropoutTS
+git clone <repository-url> DPR
+cd DPR
 pip install -e .
 ```
 
-## Quick Start
+The importable Python package is `basicts`.
 
-### Basic Usage
+## Quick start
 
-DropoutTS can be easily integrated into your training pipeline using the `DropoutTSCallback`:
+### DPRNet
 
-```python
-from basicts.runners.callback import DropoutTSCallback
-from basicts import BasicTSLauncher
-
-# Initialize callback with desired hyperparameters
-dropout_callback = DropoutTSCallback(
-    p_min=0.1,      # Minimum dropout rate for clean samples
-    p_max=0.5       # Maximum dropout rate for noisy samples
-)
-
-# Add to your callbacks list
-callbacks = [dropout_callback, ...]
-
-# Use with the launcher
-launcher = BasicTSLauncher(...)
-launcher.train(callbacks=callbacks)
-```
-
-### Configuration File
-
-You can also configure DropoutTS through a YAML configuration file:
-
-```yaml
-callbacks:
-  - name: DropoutTSCallback
-    p_min: 0.1
-    p_max: 0.5
-    init_alpha: 10.0
-    init_sensitivity: 5.0
-    detrend_method: robust_ols
-    use_instance_norm: true
-    use_sfm_anchor: true
-```
-
-## Method
-
-### Architecture
-
-DropoutTS consists of three main components:
-
-1. **Noise Scorer**: Estimates noise levels using frequency-domain analysis
-   - Computes Spectral Flatness Measure (SFM) as a physical anchor
-   - Uses Robust Rank Filter (RRF) for noise score computation
-   - Supports detrending and instance normalization
-
-2. **Adaptive Rate Computation**: Maps noise scores to dropout rates
-   - Uses sigmoid-based mapping with learnable sensitivity parameter
-   - Constrains dropout rates between `p_min` and `p_max`
-   - Provides per-sample dropout rates
-
-3. **Sample-Adaptive Dropout Layer**: Applies dropout with sample-specific rates
-   - Supports per-sample dropout rates
-   - Seamless integration with existing models
-
-### Key Innovation
-
-The core innovation of DropoutTS is using frequency-domain analysis to estimate noise levels, which provides a principled way to adapt regularization strength. Samples with higher noise (flatter spectrum) receive higher dropout rates, while cleaner samples (more structured spectrum) receive lower dropout rates.
-
-## Experiments
-
-### Dataset Preparation
-
-#### Synthetic Datasets
-
-The SyntheticTS datasets can be generated using the provided script:
+Train the minimalist DPRNet model:
 
 ```bash
-# Generate all synthetic datasets with different noise levels (0.0, 0.1, 0.3, 0.5, 0.7, 0.9)
-python scripts/data_preparation/SyntheticTS/generate_training_data.py --generate_all
-
-# Or generate a single dataset with specific noise level
-python scripts/data_preparation/SyntheticTS/generate_training_data.py --noise_level 0.3 --num_chunks 100 --chunk_size 336 --num_features 1 --output_suffix "_noise0.3"
+python run_dprnet.py
 ```
 
-The synthetic datasets are generated with:
-- **Signal Components**: Trend + Quasi-Periodic (with drift) + Transient (Chirp + AM)
-- **Noise Types**: Gaussian noise + Heavy-tail noise + Random dropouts
-- **Noise Levels**: 0.0 (clean), 0.1, 0.3, 0.5, 0.7, 0.9
+Adjust dataset, horizons, and checkpoints inside [`run_dprnet.py`](run_dprnet.py) as needed.
 
-#### Real-World Datasets
+### Plug-and-play DPR on standard backbones
 
-For real-world datasets (ETTh1, ETTh2, ETTm1, ETTm2, Electricity, Weather, Illness), please refer to the `datasets/README.md` for download and preparation instructions.
-
-### Supported Datasets
-
-DropoutTS has been evaluated on:
-
-- **Synthetic Datasets**: SyntheticTS with varying noise levels (0.1 to 0.9)
-- **Real-World Datasets**: ETTh1, ETTh2, ETTm1, ETTm2, Electricity, Weather, Illness
-
-### Supported Models
-
-DropoutTS is model-agnostic and can be applied to various architectures:
-
-- PatchTST
-- Crossformer
-- Informer
-- iTransformer
-- TimeMixer
-- TimesNet
-- DLinear
-- And more...
-
-### Running Experiments
+[`run_baselines.py`](run_baselines.py) schedules **baseline vs. +DPR** runs over datasets and a hyperparameter grid (`num_patterns`, `orth_lambda`, `conv_kernels`). It uses multiprocessing and expects multiple GPUs; edit `AVAILABLE_GPUS` and `JOBS_PER_GPU` at the top of the file for your hardware.
 
 ```bash
-# Run experiments with DropoutTS
-python run_baselines.py --enable_dropout_ts
+python run_baselines.py
+```
+
+Patch-based models (`PatchTST`, `WPMixer`, `TimeFilter`) default to **pointwise** perception only (`conv_kernels = (1,)`) so multi-scale depthwise convs do not fight patch tokenization.
+
+### Other experiment drivers (paper RQs)
+
+| Script | Role |
+|--------|------|
+| [`run_rq2_scaling.py`](run_rq2_scaling.py) | Scaling vs. +DPR (and related configs) |
+| [`run_rq3_ablation.py`](run_rq3_ablation.py) | Ablations (multiscale, orthogonality, routing, init, …) |
+| [`run_rq4_visualization.py`](run_rq4_visualization.py) | Regime / routing visualizations |
+| [`run_rq5_sensitivity.py`](run_rq5_sensitivity.py) | Sensitivity analysis |
+| [`run_moe_vs_dpr.py`](run_moe_vs_dpr.py) | DPRNet vs. MoEDPRNet variants |
+| [`run_baseline_raw.py`](run_baseline_raw.py) | Baseline runs without DPR (utility entry) |
+
+## Method (implementation)
+
+1. **Perceive:** Multi-scale **depthwise** 1D convolutions along the sequence (or `k=1` when multiscale is off), yielding context features under **channel independence**.
+2. **Route:** MLP bottleneck → cosine **softmax** over `K` learnable centroids (basis size / `num_patterns` in [`DPRConfig`](src/basicts/configs/dpr_config.py)).
+3. **Modulate:** Convex combination of `K` rows in the **modulation matrix**, then \(\mathbf{h} \odot (\mathbf{1} + \gamma \mathbf{m})\) with learnable \(\gamma\) (zero init for identity start).
+4. **Train:** Forecasting loss + \(\lambda_{\mathrm{orth}}\) · orthogonal loss on the normalized basis (see `dpr_orthogonal_loss` in [`dpr.py`](src/basicts/modules/dpr.py)).
+
+[`DPRConfig`](src/basicts/configs/dpr_config.py) exposes `num_patterns`, `orth_lambda`, `use_multiscale` / `conv_kernels`, `identity_init`, and `discrete_topk` (soft vs. hard routing).
+
+## Datasets
+
+Twelve real-world benchmarks (energy, finance, weather, health, epidemiology, etc.), aligned with the paper and [`run_baselines.py`](run_baselines.py): **ETTh1, ETTh2, ETTm1, ETTm2, Weather, Illness, ExchangeRate, BeijingAirQuality, COVID19, VIX, NABCPU, Sunspots**. Per-dataset input/horizon presets follow the paper’s protocol (see `DATASET_CONFIGS` in `run_baselines.py`).
+
+For download and preprocessing, see [`datasets/README.md`](datasets/README.md) where applicable.
+
+## Models
+
+- **DPRNet:** [`src/basicts/models/DPRNet/`](src/basicts/models/DPRNet/)  
+- **MoE variant:** [`MoEDPRNet`](src/basicts/models/MoEDPRNet/)  
+- **Backbones in [`run_baselines.py`](run_baselines.py):** Informer, Crossformer, PatchTST, TimesNet, TimeMixer, TimeFilter, WPMixer, plus **DPRNet**  
+- **Other forecasters** (e.g. iTransformer) live under [`src/basicts/models/`](src/basicts/models/) and can be wired into the same `DPRConfig` pattern for custom runs  
+
+## Code structure
+
+```
+DPR/
+├── src/basicts/
+│   ├── modules/
+│   │   └── dpr.py                 # TemporalContextualGating (DPR) + orth loss
+│   ├── configs/dpr_config.py      # DPRConfig
+│   ├── models/DPRNet/
+│   ├── models/MoEDPRNet/          # MoE variant
+│   └── runners/callback/          # Training callbacks (aux losses, early stopping, …)
+├── run_dprnet.py
+├── run_baselines.py               # Main plug-and-play + grid search driver
+├── run_rq*.py                     # Paper RQ scripts
+├── vis/                           # Figures / plotting helpers
+├── scripts/                       # Data prep and tables
+└── datasets/                      # Dataset notes and paths
 ```
 
 ## Results
 
-DropoutTS consistently improves forecasting performance, especially on noisy datasets. Key findings:
-
-- **Noise-Adaptive Regularization**: More effective than fixed dropout rates
-- **Improved Generalization**: Better performance on test sets with varying noise levels
-- **Model-Agnostic**: Benefits various architectures consistently
-
-For detailed results, please refer to the paper.
-
-## Code Structure
-
-```
-DropoutTS/
-├── src/basicts/
-│   ├── modules/
-│   │   └── dropout_ts.py          # Core DropoutTS implementation
-│   └── runners/
-│       └── callback/
-│           └── dynamic_dropout.py  # DropoutTSCallback
-├── run_baselines.py                # Main entry for experiments
-├── vis/                            # Visualization scripts
-└── scripts/                        # Data preparation and table generation
-```
+Empirical claims (DPRNet against strong baselines, consistent plug-in gains from DPR, scaling vs. recalibration, ablations) are reported in the paper and reproduced with the scripts above.
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the LICENSE file for details.
+This project is licensed under the Apache License 2.0 — see the [LICENSE](LICENSE) file.
 
 ## Acknowledgments
 
-This work builds upon an open-source time series framework. We thank the open-source community for their valuable contributions.
+Built on an open time-series forecasting codebase; we thank the community for the foundations this work extends.
