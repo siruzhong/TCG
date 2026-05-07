@@ -105,7 +105,7 @@ DPR/
 ├── run_baselines.py               # Main plug-and-play + grid search driver
 ├── run_rq*.py                     # Paper RQ scripts
 ├── scripts/
-│   ├── aggregate_results.py       # Refresh dpr_result.md from checkpoints/
+│   ├── aggregate_results.py       # Refresh docs/dpr_result.md from checkpoints/
 │   ├── extract_scaling_costs.py   # RQ2 param / FLOP extraction
 │   └── data_preparation/          # Dataset build helpers
 ├── vis/                           # Figures / plotting helpers
@@ -116,7 +116,7 @@ DPR/
 
 Empirical claims (DPRNet against strong baselines, consistent plug-in gains from DPR, scaling vs. recalibration, ablations) are reported in the paper and reproduced with the scripts above.
 
-After training, you can regenerate the aggregated metric table in [`dpr_result.md`](dpr_result.md) from `checkpoints/` with:
+After training, you can regenerate the aggregated metric table in [`docs/dpr_result.md`](docs/dpr_result.md) from `checkpoints/` with:
 
 ```bash
 python scripts/aggregate_results.py        # or: --dry-run
