@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-RQ4 Visualization: RAW vs DPR prediction comparison + regime analysis.
+RQ5 Visualization: RAW vs DPR prediction comparison + regime analysis.
 
 Layout (1 × 4):
   (a) RAW baseline prediction   (b) DPR prediction
   (c) Input signal + volatility (merged)   (d) Routing probabilities
 
 Usage:
-    python run_rq4_visualization.py \
+    python run_rq5_visualization.py \
     --checkpoint checkpoints/test_ablation/a849f714f87d07857a262cf8bd4b6e68/PatchTSTForForecasting_best_val_MAE.pt \
     --dataset ExchangeRate --input_len 96 --output_len 96 --k 8 --samples 16 \
     --fig_w 18 --fig_h 3.0 \

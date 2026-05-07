@@ -39,17 +39,17 @@ The importable Python package is `basicts`.
 Train the minimalist DPRNet model:
 
 ```bash
-python run_dprnet.py
+python run_rq1_dprnet.py
 ```
 
-Adjust dataset, horizons, and checkpoints inside [`run_dprnet.py`](run_dprnet.py) as needed.
+Adjust dataset, horizons, and checkpoints inside [`run_rq1_dprnet.py`](run_rq1_dprnet.py) as needed.
 
 ### Plug-and-play DPR on standard backbones
 
-[`run_baselines.py`](run_baselines.py) schedules **baseline vs. +DPR** runs over datasets and a hyperparameter grid (`num_patterns`, `orth_lambda`, `conv_kernels`). It uses multiprocessing and expects multiple GPUs; edit `AVAILABLE_GPUS` and `JOBS_PER_GPU` at the top of the file for your hardware.
+[`run_rq2_baselines.py`](run_rq2_baselines.py) schedules **baseline vs. +DPR** runs over datasets and a hyperparameter grid (`num_patterns`, `orth_lambda`, `conv_kernels`). It uses multiprocessing and expects multiple GPUs; edit `AVAILABLE_GPUS` and `JOBS_PER_GPU` at the top of the file for your hardware.
 
 ```bash
-python run_baselines.py
+python run_rq2_baselines.py
 ```
 
 Patch-based models (`PatchTST`, `WPMixer`, `TimeFilter`) default to **pointwise** perception only (`conv_kernels = (1,)`) so multi-scale depthwise convs do not fight patch tokenization.
@@ -58,13 +58,13 @@ Patch-based models (`PatchTST`, `WPMixer`, `TimeFilter`) default to **pointwise*
 
 | Script | Role |
 |--------|------|
-| [`run_rq2_scaling.py`](run_rq2_scaling.py) | Scaling vs. +DPR (and related configs) |
-| [`run_rq3_ablation.py`](run_rq3_ablation.py) | Ablations (multiscale, orthogonality, routing, init, …) |
-| [`run_rq4_visualization.py`](run_rq4_visualization.py) | Regime / routing visualizations |
-| [`run_rq5_sensitivity.py`](run_rq5_sensitivity.py) | Sensitivity analysis |
-| [`run_moe_vs_dpr.py`](run_moe_vs_dpr.py) | DPRNet vs. MoEDPRNet variants |
+| [`run_rq3_scaling.py`](run_rq3_scaling.py) | Scaling vs. +DPR (and related configs) |
+| [`run_rq4_ablation.py`](run_rq4_ablation.py) | Ablations (multiscale, orthogonality, routing, init, …) |
+| [`run_rq5_visualization.py`](run_rq5_visualization.py) | Regime / routing visualizations |
+| [`run_rq4_sensitivity.py`](run_rq4_sensitivity.py) | Sensitivity analysis |
+| [`run_rq4_moe_vs_dpr.py`](run_rq4_moe_vs_dpr.py) | DPRNet vs. MoEDPRNet variants |
 | [`run_baseline_raw.py`](run_baseline_raw.py) | Baseline runs without DPR (utility entry) |
-| [`scripts/extract_scaling_costs.py`](scripts/extract_scaling_costs.py) | After RQ2: read `checkpoints/test_scaling` logs + compute Raw / +DPR params (optional `--flops` via `thop`) |
+| [`scripts/extract_scaling_costs.py`](scripts/extract_scaling_costs.py) | After RQ3 scaling: read `checkpoints/test_scaling` logs + compute Raw / +DPR params (optional `--flops` via `thop`) |
 
 Run the scaling helper from the repo root: `python scripts/extract_scaling_costs.py [--flops]`.
 
@@ -79,7 +79,7 @@ Run the scaling helper from the repo root: `python scripts/extract_scaling_costs
 
 ## Datasets
 
-Twelve real-world benchmarks (energy, finance, weather, health, epidemiology, etc.), aligned with the paper and [`run_baselines.py`](run_baselines.py): **ETTh1, ETTh2, ETTm1, ETTm2, Weather, Illness, ExchangeRate, BeijingAirQuality, COVID19, VIX, NABCPU, Sunspots**. Per-dataset input/horizon presets follow the paper’s protocol (see `DATASET_CONFIGS` in `run_baselines.py`).
+Twelve real-world benchmarks (energy, finance, weather, health, epidemiology, etc.), aligned with the paper and [`run_rq2_baselines.py`](run_rq2_baselines.py): **ETTh1, ETTh2, ETTm1, ETTm2, Weather, Illness, ExchangeRate, BeijingAirQuality, COVID19, VIX, NABCPU, Sunspots**. Per-dataset input/horizon presets follow the paper’s protocol (see `DATASET_CONFIGS` in `run_rq2_baselines.py`).
 
 For download and preprocessing, see [`datasets/README.md`](datasets/README.md) where applicable.
 
@@ -87,7 +87,7 @@ For download and preprocessing, see [`datasets/README.md`](datasets/README.md) w
 
 - **DPRNet:** [`src/basicts/models/DPRNet/`](src/basicts/models/DPRNet/)  
 - **MoE variant:** [`MoEDPRNet`](src/basicts/models/MoEDPRNet/)  
-- **Backbones in [`run_baselines.py`](run_baselines.py):** Informer, Crossformer, PatchTST, TimesNet, TimeMixer, TimeFilter, WPMixer, plus **DPRNet**  
+- **Backbones in [`run_rq2_baselines.py`](run_rq2_baselines.py):** Informer, Crossformer, PatchTST, TimesNet, TimeMixer, TimeFilter, WPMixer, plus **DPRNet**  
 - **Other forecasters** (e.g. iTransformer) live under [`src/basicts/models/`](src/basicts/models/) and can be wired into the same `DPRConfig` pattern for custom runs  
 
 ## Code structure
@@ -101,12 +101,12 @@ DPR/
 │   ├── models/DPRNet/
 │   ├── models/MoEDPRNet/          # MoE variant
 │   └── runners/callback/          # Training callbacks (aux losses, early stopping, …)
-├── run_dprnet.py
-├── run_baselines.py               # Main plug-and-play + grid search driver
-├── run_rq*.py                     # Paper RQ scripts
+├── run_rq1_dprnet.py              # DPRNet trainer
+├── run_rq2_baselines.py           # Main plug-and-play + grid search driver
+├── run_rq*.py                     # Other paper RQ scripts (scaling, ablation, …)
 ├── scripts/
 │   ├── aggregate_results.py       # Refresh docs/dpr_result.md from checkpoints/
-│   ├── extract_scaling_costs.py   # RQ2 param / FLOP extraction
+│   ├── extract_scaling_costs.py   # RQ3 scaling: param / FLOP extraction
 │   └── data_preparation/          # Dataset build helpers
 ├── vis/                           # Figures / plotting helpers
 └── datasets/                      # Dataset notes and paths

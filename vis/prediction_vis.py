@@ -33,10 +33,10 @@ import argparse
 #   python prediction_vis.py --dpr ../checkpoints/TimesNetForForecasting/ETTm1_100_96_720/xxx
 #
 # ==========================================
-# 1. Global plot style (matches run_rq4_visualization.py)
+# 1. Global plot style (matches run_rq5_visualization.py)
 # ==========================================
 def set_academic_style():
-    """Font family and sizes aligned with run_rq4_visualization.py."""
+    """Font family and sizes aligned with run_rq5_visualization.py."""
     sns.set_theme(style="whitegrid", font_scale=1.0, rc={
         "font.family": "sans-serif",
         "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],

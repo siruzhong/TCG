@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sensitivity Analysis for RQ5: PatchTST + Crossformer on Illness dataset
+Sensitivity Analysis for RQ4: PatchTST + Crossformer on Illness dataset
 
 Three sensitivity curves:
   Curve 1: K=8 fixed, orth_lambda varies in {0, 0.0001, 0.001, 0.01, 0.1}
@@ -179,7 +179,7 @@ def worker(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run RQ5 sensitivity experiments")
+    parser = argparse.ArgumentParser(description="Run RQ4 sensitivity experiments")
     parser.add_argument(
         "--only-conv",
         action="store_true",

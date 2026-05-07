@@ -6,7 +6,7 @@ MAE), then updates ``docs/dpr_result.md`` in place using the best-of rule:
 
     new_cell = argmin_MSE( old_markdown_cell, all_disk_runs_for_this_cell )
 
-Conventions enforced by this script (keep them in sync with run_baselines.py):
+Conventions enforced by this script (keep them in sync with run_rq2_baselines.py):
 
 * RAW  = ``cfg.json -> model_config.dpr.params`` is empty (defaults to
         ``enabled=False``). Usually a single run per cell.
@@ -17,7 +17,7 @@ Conventions enforced by this script (keep them in sync with run_baselines.py):
         the cell is the best MSE/MAE across all runs for that (model, dataset, horizon).
 
 The list of ``MODELS``/``DATASETS``/``DATASET_CONFIGS`` is imported directly
-from ``run_baselines.py`` so adding a new model or dataset there also extends
+from ``run_rq2_baselines.py`` so adding a new model or dataset there also extends
 the table here.
 
 Usage:
@@ -35,19 +35,19 @@ import sys
 import glob
 from collections import defaultdict
 
-# Make ``run_baselines`` importable without triggering its heavy model imports.
+# Make ``run_rq2_baselines`` importable without triggering its heavy model imports.
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
 
 try:
-    from run_baselines import (
+    from run_rq2_baselines import (
         MODELS as RB_MODELS,
         DATASETS as RB_DATASETS,
         DATASET_CONFIGS as RB_CONFIGS,
     )
 except Exception:
-    # Fallback: mirror the declarations in run_baselines.py. Keep in sync.
+    # Fallback: mirror the declarations in run_rq2_baselines.py. Keep in sync.
     RB_MODELS = [
         "Informer", "Crossformer", "PatchTST", "TimesNet",
         "TimeMixer", "TimeFilter", "WPMixer", "DPRNet",
@@ -67,7 +67,7 @@ except Exception:
         "default":  {"input_lens": [96], "output_lens": [96, 192, 336, 720]},
     }
 
-# Display name used in the markdown table (differs from run_baselines name).
+# Display name used in the markdown table (differs from run_rq2_baselines name).
 MD_NAME = {"Illness": "ILI"}
 
 # No DPR split: one table column, best MSE/MAE over all matching runs.
@@ -100,7 +100,7 @@ CHECKPOINTS = os.path.join(REPO_ROOT, "checkpoints")
 # Optional dataset ordering source. If this CSV exists (produced by
 # ``vis/dataset_analysis.py``), datasets will be emitted in its row order --
 # which is by heterogeneity score, highest first. If it is missing, we fall
-# back to ``run_baselines.DATASETS`` declaration order.
+# back to ``run_rq2_baselines.DATASETS`` declaration order.
 HETEROGENEITY_CSV = os.path.join(REPO_ROOT, "vis", "dataset_analysis.csv")
 
 
@@ -349,7 +349,7 @@ def _resolve_column_order(header_map: dict) -> list:
 
     Preserves the column order of an existing markdown file so that re-running
     the aggregator never reshuffles columns. Unknown-to-md models defined in
-    ``run_baselines.MODELS`` are appended at the end so adding a new baseline
+    ``run_rq2_baselines.MODELS`` are appended at the end so adding a new baseline
     just grows the table to the right.
     """
     if not header_map:
@@ -423,7 +423,7 @@ def merge_and_emit(existing: dict, disk: dict, model_order: list | None = None):
     """Produce (new_rows_by_dataset, change_log).
 
     ``model_order`` controls the column ordering when emitting rows. If None,
-    falls back to ``run_baselines.MODELS``.
+    falls back to ``run_rq2_baselines.MODELS``.
     """
     new_rows = []
     changes = {"fill": [], "improve": [], "unchanged_empty": []}
@@ -544,7 +544,7 @@ def main():
 
     # Regenerate header/separator so the column order matches ``model_order``
     # (which preserves the original markdown order and extends it with any
-    # newly-added models from ``run_baselines.MODELS``).
+    # newly-added models from ``run_rq2_baselines.MODELS``).
     new_prefix = []
     replaced_header = False
     for line in prefix:

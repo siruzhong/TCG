@@ -4,11 +4,11 @@ Extract parameter counts (and optionally FLOPs) for the scaling vs DPR table.
 
 1) checkpoints/test_scaling — reads each run's training_log*.log line:
      Total parameters: <N>
-   and cfg.json to label 2xW / 2xD / 2xB (matches run_rq2_scaling.WIDE_CONFIGS).
+   and cfg.json to label 2xW / 2xD / 2xB (matches run_rq3_scaling.WIDE_CONFIGS).
 
-2) Raw and +DPR are usually NOT under test_scaling (RQ2 only runs WIDE).
+2) Raw and +DPR are usually NOT under test_scaling (RQ3 scaling driver only runs WIDE).
    This script *computes* their param counts (and optional FLOPs) from the
-   same configs as run_rq2_scaling.get_model_config for ETTh1 96->96
+   same configs as run_rq3_scaling.get_model_config for ETTh1 96->96
    (change TASK_REF below if needed).
 
 FLOPs: not logged anywhere in BasicTS. If ``pip install thop`` is available,
@@ -38,7 +38,7 @@ if _SRC not in sys.path:
 
 TEST_SCALING = os.path.join(_PROJECT_ROOT, "checkpoints", "test_scaling")
 
-# Match run_rq2_scaling.WIDE_CONFIGS
+# Match run_rq3_scaling.WIDE_CONFIGS
 WIDE_RULES: Tuple[Dict[str, Any], ...] = (
     {
         "label": "2xW",
@@ -150,8 +150,8 @@ def collect_test_scaling() -> list[dict]:
     return rows
 
 
-def _get_rq2_config(model_short: str, dataset_name, num_f, in_l, out_l, overrides, dpr_enabled: Optional[bool]):
-    import run_rq2_scaling as rq2
+def _get_rq3_scaling_config(model_short: str, dataset_name, num_f, in_l, out_l, overrides, dpr_enabled: Optional[bool]):
+    import run_rq3_scaling as rq3
     from basicts.configs import DPRConfig
 
     model_name = (
@@ -161,7 +161,7 @@ def _get_rq2_config(model_short: str, dataset_name, num_f, in_l, out_l, override
         if model_short == "TimesNet"
         else "TimeMixer"
     )
-    cls, mcfg, _ = rq2.get_model_config(
+    cls, mcfg, _ = rq3.get_model_config(
         model_name, in_l, out_l, num_f, dataset_name, overrides=overrides
     )
     if hasattr(mcfg, "dpr") and dpr_enabled is not None:
@@ -202,15 +202,15 @@ def build_raw_dpr_params_and_flops(compute_flops: bool) -> Dict[str, Any]:
     dname, nf, in_l, out_l = TASK_REF
     out: Dict[str, Any] = {}
     for model_short in ("PatchTST", "TimesNet", "TimeMixer"):
-        # Raw: no RQ2 overrides, DPR off (as in RQ2 run_experiment for WIDE, but without overrides = defaults)
-        cls_r, mcfg_r = _get_rq2_config(model_short, dname, nf, in_l, out_l, None, dpr_enabled=False)
+        # Raw: no RQ3 scaling overrides, DPR off (as in run_rq3_scaling.run_experiment for WIDE, but without overrides = defaults)
+        cls_r, mcfg_r = _get_rq3_scaling_config(model_short, dname, nf, in_l, out_l, None, dpr_enabled=False)
         pr = count_params_for_config(cls_r, mcfg_r)
         fr = flops_thop(cls_r, mcfg_r, model_short) if compute_flops else None
 
-        # +DPR: same backbone, DPR on (use patch-friendly defaults like run_baselines)
+        # +DPR: same backbone, DPR on (use patch-friendly defaults like run_rq2_baselines)
         from basicts.configs import DPRConfig
 
-        cls_t, mcfg_t = _get_rq2_config(model_short, dname, nf, in_l, out_l, None, dpr_enabled=None)
+        cls_t, mcfg_t = _get_rq3_scaling_config(model_short, dname, nf, in_l, out_l, None, dpr_enabled=None)
         use_ms = model_short not in {"PatchTST", "WPMixer", "TimeFilter"}
         mcfg_t.dpr = DPRConfig(enabled=True, num_patterns=8, orth_lambda=0.01, use_multiscale=use_ms)
         pt = count_params_for_config(cls_t, mcfg_t)
