@@ -19,18 +19,20 @@ Non-stationary series shift across regimes; standard backbones apply **globally 
 ### Requirements
 
 - Python ≥ 3.9  
-- PyTorch (see your CUDA/CPU setup)  
-- Dependencies in [`pyproject.toml`](pyproject.toml) / [`requirements.txt`](requirements.txt) if present  
+- PyTorch (install separately for your CUDA/CPU stack; not pinned in `requirements.txt`)  
+- Other libraries: [`requirements.txt`](requirements.txt)
 
 ### Install from source
 
 ```bash
 git clone <repository-url> DPR
 cd DPR
-pip install -e .
+pip install -r requirements.txt
 ```
 
-The importable Python package is `basicts`.
+The `run_rq*.py` drivers add [`src/`](src/) to `sys.path`, so you do **not** need `pip install -e .`.
+
+The importable package is `basicts` under [`src/basicts/`](src/basicts/).
 
 ## Quick start
 
@@ -120,10 +122,6 @@ After training, you can regenerate the aggregated metric table in [`docs/dpr_res
 ```bash
 python scripts/aggregate_results.py        # or: --dry-run
 ```
-
-## License
-
-This project is licensed under the Apache License 2.0 — see the [LICENSE](LICENSE) file.
 
 ## Acknowledgments
 
