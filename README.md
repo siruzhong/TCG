@@ -63,7 +63,6 @@ Patch-based models (`PatchTST`, `WPMixer`, `TimeFilter`) default to **pointwise*
 | [`run_rq5_visualization.py`](run_rq5_visualization.py) | Regime / routing visualizations |
 | [`run_rq4_sensitivity.py`](run_rq4_sensitivity.py) | Sensitivity analysis |
 | [`run_rq4_moe_vs_dpr.py`](run_rq4_moe_vs_dpr.py) | DPRNet vs. MoEDPRNet variants |
-| [`run_baseline_raw.py`](run_baseline_raw.py) | Baseline runs without DPR (utility entry) |
 | [`scripts/extract_scaling_costs.py`](scripts/extract_scaling_costs.py) | After RQ3 scaling: read `checkpoints/test_scaling` logs + compute Raw / +DPR params (optional `--flops` via `thop`) |
 
 Run the scaling helper from the repo root: `python scripts/extract_scaling_costs.py [--flops]`.
