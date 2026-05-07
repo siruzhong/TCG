@@ -82,8 +82,6 @@ Run the scaling helper from the repo root: `python scripts/extract_scaling_costs
 
 Twelve real-world benchmarks (energy, finance, weather, health, epidemiology, etc.), aligned with the paper and [`run_rq2_baselines.py`](run_rq2_baselines.py): **ETTh1, ETTh2, ETTm1, ETTm2, Weather, Illness, ExchangeRate, BeijingAirQuality, COVID19, VIX, NABCPU, Sunspots**. Per-dataset input/horizon presets follow the paper’s protocol (see `DATASET_CONFIGS` in `run_rq2_baselines.py`).
 
-For download and preprocessing, see [`datasets/README.md`](datasets/README.md) where applicable.
-
 ## Models
 
 - **DPRNet:** [`src/basicts/models/DPRNet/`](src/basicts/models/DPRNet/)  
@@ -109,8 +107,7 @@ DPR/
 │   ├── aggregate_results.py       # Refresh docs/dpr_result.md from checkpoints/
 │   ├── extract_scaling_costs.py   # RQ3 scaling: param / FLOP extraction
 │   └── data_preparation/          # Dataset build helpers
-├── vis/                           # Figures / plotting helpers
-└── datasets/                      # Dataset notes and paths
+└── vis/                           # Figures / plotting helpers
 ```
 
 ## Results
