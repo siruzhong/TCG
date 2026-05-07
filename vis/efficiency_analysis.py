@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DPR_RESULT_MD = os.path.join(REPO_ROOT, "dpr_result.md")
+DPR_RESULT_MD = os.path.join(REPO_ROOT, "docs", "dpr_result.md")
 CHECKPOINTS = os.path.join(REPO_ROOT, "checkpoints")
 
 DATASET = "COVID19"

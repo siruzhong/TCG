@@ -1,8 +1,8 @@
-"""One-click incremental updater for ``dpr_result.md``.
+"""One-click incremental updater for ``docs/dpr_result.md``.
 
 Scans every ``checkpoints/<Model>/<dataset>_1_<input>_<horizon>/<hash>/`` folder,
 reads ``cfg.json`` (to classify as RAW or DPR) and ``test_metrics.json`` (MSE /
-MAE), then updates ``dpr_result.md`` in place using the best-of rule:
+MAE), then updates ``docs/dpr_result.md`` in place using the best-of rule:
 
     new_cell = argmin_MSE( old_markdown_cell, all_disk_runs_for_this_cell )
 
@@ -21,7 +21,7 @@ from ``run_baselines.py`` so adding a new model or dataset there also extends
 the table here.
 
 Usage:
-    python scripts/aggregate_results.py              # in-place update of dpr_result.md
+    python scripts/aggregate_results.py              # in-place update of docs/dpr_result.md
     python scripts/aggregate_results.py --dry-run    # print changes, do not write
 """
 from __future__ import annotations
@@ -94,7 +94,7 @@ def _ckpt_subdir(model_name: str) -> str:
 
 
 MODELS = list(RB_MODELS)
-MARKDOWN = os.path.join(REPO_ROOT, "dpr_result.md")
+MARKDOWN = os.path.join(REPO_ROOT, "docs", "dpr_result.md")
 CHECKPOINTS = os.path.join(REPO_ROOT, "checkpoints")
 
 # Optional dataset ordering source. If this CSV exists (produced by
@@ -532,7 +532,7 @@ def _print_completeness_matrix(disk: dict, existing: dict):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true",
-                    help="Do not modify dpr_result.md; print changes only.")
+                    help="Do not modify docs/dpr_result.md; print changes only.")
     ap.add_argument("--path", default=MARKDOWN,
                     help="Path to the markdown file to update.")
     args = ap.parse_args()
